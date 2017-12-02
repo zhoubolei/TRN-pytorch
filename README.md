@@ -14,9 +14,9 @@ CUDA_VISIBLE_DEVICES=0,1 python main.py something RGB --arch BNInception --num_s
 
 
 
-
+--------------------
 # Below is the README from TSN-Pytorch
----------------------------------
+
 ## Training
 
 To train a new model, use the `main.py` script.
