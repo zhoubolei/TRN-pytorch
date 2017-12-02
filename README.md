@@ -6,11 +6,21 @@ This is the codebase of the temporal relation networks, built on top of the [TSN
 Otherwise you will not be able to use the inception series CNN archs. 
 
 
-The command to train TRN
+The command to train single scale TRN
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1 python main.py something RGB --arch BNInception --num_segments 3 --consensus_type TRN --batch-size 64
+CUDA_VISIBLE_DEVICES=0,1 python main.py something RGB \
+                     --arch BNInception --num_segments 3 \
+                     --consensus_type TRN --batch-size 64
 ```
+
+The command to train multi-scale TRN
+```bash
+CUDA_VISIBLE_DEVICES=0,1 python main.py something RGB \
+                     --arch BNInception --num_segments 8 \
+                     --consensus_type TRNmultiscale --batch-size 64
+```
+
 
 
 

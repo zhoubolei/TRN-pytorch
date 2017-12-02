@@ -53,9 +53,7 @@ TSN Configurations:
             print("Done. RGBDiff model ready.")
         if consensus_type in ['TRN', 'TRNmultiscale']:
             # plug in the Temporal Relation Network Module
-            num_frames_total = self.num_segments
-            num_frames_relation = self.num_segments
-            self.consensus = TRNmodule.return_TRN(consensus_type, self.img_feature_dim, num_frames_total, num_frames_relation, num_class)
+            self.consensus = TRNmodule.return_TRN(consensus_type, self.img_feature_dim, self.num_segments, num_class)
         else:
             self.consensus = ConsensusModule(consensus_type)
 
