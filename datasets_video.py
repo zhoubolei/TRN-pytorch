@@ -42,9 +42,19 @@ def return_charades(modality):
         os.exit()
     return filename_categories, filename_imglist_train, filename_imglist_val, root_data, prefix
 
+def return_moments(modality):
+    filename_categories = '/data/vision/oliva/scratch/moments/split/categoryList_nov17.csv'
+    filename_imglist_train = '/data/vision/oliva/scratch/moments/split/rgb_trainingSet_nov17.csv'
+    filename_imglist_val = '/data/vision/oliva/scratch/moments/split/rgb_validationSet_nov17.csv'
+    root_data = '/data/vision/oliva/scratch/moments/moments_nov17_frames'
+    if modality == 'RGB':
+        prefix = '{:06d}.jpg'
+    else:
+        os.exit()
+    return filename_categories, filename_imglist_train, filename_imglist_val, root_data, prefix
 
 def return_dataset(dataset, modality):
-    dict_single = {'jester':return_jester, 'something':return_something, 'charades': return_charades}
+    dict_single = {'jester':return_jester, 'something':return_something, 'charades': return_charades, 'moments': return_moments}
     if dataset in dict_single:
         file_categories, file_imglist_train, file_imglist_val, root_data, prefix = dict_single[dataset](modality)
     else:
