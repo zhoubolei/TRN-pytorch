@@ -16,6 +16,7 @@ parser.add_argument('--dropout', '--do', default=0.8, type=float,
                     metavar='DO', help='dropout ratio (default: 0.5)')
 parser.add_argument('--loss_type', type=str, default="nll",
                     choices=['nll'])
+parser.add_argument('--img_feature_dim', default=256, type=int, help="the feature dimension for each frame")
 
 # ========================= Learning Configs ==========================
 parser.add_argument('--epochs', default=120, type=int, metavar='N',
@@ -55,7 +56,7 @@ parser.add_argument('--gpus', nargs='+', type=int, default=None)
 parser.add_argument('--flow_prefix', default="", type=str)
 parser.add_argument('--root_log',type=str, default='log')
 parser.add_argument('--root_model', type=str, default='model')
-
+parser.add_argument('--root_output',type=str, default='output')
 
 
 

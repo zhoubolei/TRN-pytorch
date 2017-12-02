@@ -10,7 +10,7 @@ class TSN(nn.Module):
     def __init__(self, num_class, num_segments, modality,
                  base_model='resnet101', new_length=None,
                  consensus_type='avg', before_softmax=True,
-                 dropout=0.8,
+                 dropout=0.8,img_feature_dim=256,
                  crop_num=1, partial_bn=True):
         super(TSN, self).__init__()
         self.modality = modality
@@ -20,7 +20,7 @@ class TSN(nn.Module):
         self.dropout = dropout
         self.crop_num = crop_num
         self.consensus_type = consensus_type
-        self.img_feature_dim = 256 # the dimension of the CNN feature to represent each frame
+        self.img_feature_dim = img_feature_dim  # the dimension of the CNN feature to represent each frame
         if not before_softmax and consensus_type != 'avg':
             raise ValueError("Only avg consensus can be used after Softmax")
 
@@ -37,7 +37,8 @@ TSN Configurations:
     new_length:         {}
     consensus_module:   {}
     dropout_ratio:      {}
-        """.format(base_model, self.modality, self.num_segments, self.new_length, consensus_type, self.dropout)))
+    img_feature_dim:    {}
+        """.format(base_model, self.modality, self.num_segments, self.new_length, consensus_type, self.dropout, self.img_feature_dim)))
 
         self._prepare_base_model(base_model)
 
@@ -109,6 +110,17 @@ TSN Configurations:
                 self.input_mean = [128]
             elif self.modality == 'RGBDiff':
                 self.input_mean = self.input_mean * (1 + self.new_length)
+        elif base_model == 'InceptionV3':
+            import model_zoo
+            self.base_model = getattr(model_zoo, base_model)()
+            self.base_model.last_layer_name = 'top_cls_fc'
+            self.input_size = 299
+            self.input_mean = [104,117,128]
+            self.input_std = [1]
+            if self.modality == 'Flow':
+                self.input_mean = [128]
+            elif self.modality == 'RGBDiff':
+                self.input_mean = self.input_mean * (1+self.new_length)
 
         elif 'inception' in base_model:
             import model_zoo

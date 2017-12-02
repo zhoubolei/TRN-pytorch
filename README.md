@@ -1,12 +1,22 @@
-# Temporal Relation Networks 
+# Temporal Relation Networks
 
-This is the codebase of the temporal relation networks, built on top of the [TSN-pytorch codebase](https://github.com/yjxiong/temporal-segment-networks).
+We release the code of the [Temporal Relation Networks](http://relation.csail.mit.edu/), built on top of the [TSN-pytorch codebase](https://github.com/yjxiong/temporal-segment-networks).
 
-**Note**: always use `git clone --recursive https://github.com/metalbubble/TRN-TSN` to clone this project. 
+**Note**: always use `git clone --recursive https://github.com/metalbubble/TRN-TSN` to clone this project
 Otherwise you will not be able to use the inception series CNN archs. 
 
+![framework](http://relation.csail.mit.edu/framework_trn.png)
 
-The command to train single scale TRN
+### Data preparation
+Download the [something-something dataset](https://www.twentybn.com/datasets/something-something) or [jester dataset](https://www.twentybn.com/datasets/something-something) or [charades dataset](http://allenai.org/plato/charades/). Decompress them into some folder. Use [process_dataset.py](process_dataset.py) to generate the index files for train, val, and test split. Finally properly set up the train, validatin, and category meta files in [datasets_video.py](datasets_video.py).
+
+### Code
+
+Core code to implement the Temporal Relation Network module is [TRNmodule](TRNmodule.py). It is plug-and-play on top of the TSN.
+
+### Training and Testing
+
+* The command to train single scale TRN
 
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 python main.py something RGB \
@@ -14,69 +24,43 @@ CUDA_VISIBLE_DEVICES=0,1 python main.py something RGB \
                      --consensus_type TRN --batch-size 64
 ```
 
-The command to train multi-scale TRN
+* The command to train multi-scale TRN
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 python main.py something RGB \
                      --arch BNInception --num_segments 8 \
                      --consensus_type TRNmultiscale --batch-size 64
 ```
 
-
-
-
---------------------
-# Below is the README from TSN-Pytorch
-
-## Training
-
-To train a new model, use the `main.py` script.
-
-The command to reproduce the original TSN experiments of RGB modality on UCF101 can be 
+* The command to test the single scale TRN
 
 ```bash
-python main.py ucf101 RGB <ucf101_rgb_train_list> <ucf101_rgb_val_list> \
-   --arch BNInception --num_segments 3 \
-   --gd 20 --lr 0.001 --lr_steps 30 60 --epochs 80 \
-   -b 128 -j 8 --dropout 0.8 \
-   --snapshot_pref ucf101_bninception_ 
+python test_models.py something RGB model/TRN_something_RGB_BNInception_TRN_segment3_best.pth.tar \
+   --arch BNInception --crop_fusion_type TRN --test_segments 3
 ```
 
-For flow models:
+* The command to test the multi-scale TRN
 
 ```bash
-python main.py ucf101 Flow <ucf101_flow_train_list> <ucf101_flow_val_list> \
-   --arch BNInception --num_segments 3 \
-   --gd 20 --lr 0.001 --lr_steps 190 300 --epochs 340 \
-   -b 128 -j 8 --dropout 0.7 \
-   --snapshot_pref ucf101_bninception_ --flow_pref flow_  
+python test_models.py something RGB model/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar \
+   --arch BNInception --crop_fusion_type TRNmultiscale --test_segments 8
 ```
 
-For RGB-diff models:
+### TODO
 
-```bash
-python main.py ucf101 RGBDiff <ucf101_rgb_train_list> <ucf101_rgb_val_list> \
-   --arch BNInception --num_segments 7 \
-   --gd 40 --lr 0.001 --lr_steps 80 160 --epochs 180 \
-   -b 128 -j 8 --dropout 0.8 \
-   --snapshot_pref ucf101_bninception_ 
+* TODO: Web-cam demo script
+* TODO: Visualization script
+
+
+### Reference:
+B. Zhou, A. Andonian, and A. Torralba. Temporal Relational Reasoning in Videos. arXiv:1711.08496, 2017. [PDF](https://arxiv.org/pdf/1711.08496.pdf)
+```
+@article{zhou2017temporalrelation,
+    title = {Temporal Relational Reasoning in Videos},
+    author = {Zhou, Bolei and Andonian, Alex and Torralba, Antonio},
+    journal={arXiv:1711.08496},
+    year={2017}
+}
 ```
 
-## Testing
-
-After training, there will checkpoints saved by pytorch, for example `ucf101_bninception_rgb_checkpoint.pth`.
-
-Use the following command to test its performance in the standard TSN testing protocol:
-
-```bash
-python test_models.py ucf101 RGB <ucf101_rgb_val_list> ucf101_bninception_rgb_checkpoint.pth \
-   --arch BNInception --save_scores <score_file_name>
-
-```
-
-Or for flow models:
- 
-```bash
-python test_models.py ucf101 Flow <ucf101_rgb_val_list> ucf101_bninception_flow_checkpoint.pth \
-   --arch BNInception --save_scores <score_file_name> --flow_pref flow_
-
-```
+### License
+Our temporal relation network is plug-and-play on top of the [TSN-Pytorch](https://github.com/yjxiong/temporal-segment-networks), but it could be extended to other network architectures easily. We thank Yuanjun Xiong for releasing TSN-Pytorch codebase. Something-something dataset and Jester dataset are from [TwentyBN](https://www.twentybn.com/), we really appreciate their effort to build such nice video datasets. Please refer to [their dataset website](https://www.twentybn.com/datasets/something-something) for the proper usage of the data.

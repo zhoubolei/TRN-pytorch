@@ -10,13 +10,13 @@ from dataset import TSNDataSet
 from models import TSN
 from transforms import *
 from ops import ConsensusModule
+import datasets_video
 
 # options
 parser = argparse.ArgumentParser(
-    description="Standard video-level testing")
-parser.add_argument('dataset', type=str, choices=['ucf101', 'hmdb51', 'kinetics'])
+    description="TRN single video testing")
+parser.add_argument('dataset', type=str, choices=['something','jester','moments','charades'])
 parser.add_argument('modality', type=str, choices=['RGB', 'Flow', 'RGBDiff'])
-parser.add_argument('test_list', type=str)
 parser.add_argument('weights', type=str)
 parser.add_argument('--arch', type=str, default="resnet101")
 parser.add_argument('--save_scores', type=str, default=None)
@@ -24,31 +24,57 @@ parser.add_argument('--test_segments', type=int, default=25)
 parser.add_argument('--max_num', type=int, default=-1)
 parser.add_argument('--test_crops', type=int, default=10)
 parser.add_argument('--input_size', type=int, default=224)
-parser.add_argument('--crop_fusion_type', type=str, default='avg',
-                    choices=['avg', 'max', 'topk'])
-parser.add_argument('--k', type=int, default=3)
-parser.add_argument('--dropout', type=float, default=0.7)
+parser.add_argument('--crop_fusion_type', type=str, default='TRN',
+                    choices=['avg', 'TRN','TRNmultiscale'])
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--gpus', nargs='+', type=int, default=None)
-parser.add_argument('--flow_prefix', type=str, default='')
+parser.add_argument('--img_feature_dim',type=int, default=256)
+parser.add_argument('--num_set_segments',type=int, default=1,help='TODO: select multiply set of n-frames from a video')
 
 args = parser.parse_args()
 
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
 
-if args.dataset == 'ucf101':
-    num_class = 101
-elif args.dataset == 'hmdb51':
-    num_class = 51
-elif args.dataset == 'kinetics':
-    num_class = 400
-else:
-    raise ValueError('Unknown dataset '+args.dataset)
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
 
-net = TSN(num_class, 1, args.modality,
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+def accuracy(output, target, topk=(1,)):
+    """Computes the precision@k for the specified values of k"""
+    maxk = max(topk)
+    batch_size = target.size(0)
+    _, pred = output.topk(maxk, 1, True, True)
+    pred = pred.t()
+    correct = pred.eq(target.view(1, -1).expand_as(pred))
+    res = []
+    for k in topk:
+         correct_k = correct[:k].view(-1).float().sum(0)
+         res.append(correct_k.mul_(100.0 / batch_size))
+    return res
+
+
+
+categories, args.train_list, args.val_list, args.root_path, prefix = datasets_video.return_dataset(args.dataset, args.modality)
+num_class = len(categories)
+
+
+net = TSN(num_class, args.test_segments if args.crop_fusion_type in ['TRN','TRNmultiscale'] else 1, args.modality,
           base_model=args.arch,
           consensus_type=args.crop_fusion_type,
-          dropout=args.dropout)
+          img_feature_dim=args.img_feature_dim,
+          )
 
 checkpoint = torch.load(args.weights)
 print("model epoch {} best prec@1: {}".format(checkpoint['epoch'], checkpoint['best_prec1']))
@@ -69,15 +95,15 @@ else:
     raise ValueError("Only 1 and 10 crops are supported while we got {}".format(args.test_crops))
 
 data_loader = torch.utils.data.DataLoader(
-        TSNDataSet("", args.test_list, num_segments=args.test_segments,
+        TSNDataSet(args.root_path, args.val_list, num_segments=args.test_segments,
                    new_length=1 if args.modality == "RGB" else 5,
                    modality=args.modality,
-                   image_tmpl="img_{:05d}.jpg" if args.modality in ['RGB', 'RGBDiff'] else args.flow_prefix+"{}_{:05d}.jpg",
+                   image_tmpl=prefix,
                    test_mode=True,
                    transform=torchvision.transforms.Compose([
                        cropping,
-                       Stack(roll=args.arch == 'BNInception'),
-                       ToTorchFormatTensor(div=args.arch != 'BNInception'),
+                       Stack(roll=(args.arch in ['BNInception','InceptionV3'])),
+                       ToTorchFormatTensor(div=(args.arch not in ['BNInception','InceptionV3'])),
                        GroupNormalize(net.input_mean, net.input_std),
                    ])),
         batch_size=1, shuffle=False,
@@ -89,7 +115,8 @@ else:
     devices = list(range(args.workers))
 
 
-net = torch.nn.DataParallel(net.cuda(devices[0]), device_ids=devices)
+#net = torch.nn.DataParallel(net.cuda(devices[0]), device_ids=devices)
+net = torch.nn.DataParallel(net.cuda())
 net.eval()
 
 data_gen = enumerate(data_loader)
@@ -114,13 +141,20 @@ def eval_video(video_data):
     input_var = torch.autograd.Variable(data.view(-1, length, data.size(2), data.size(3)),
                                         volatile=True)
     rst = net(input_var).data.cpu().numpy().copy()
-    return i, rst.reshape((num_crop, args.test_segments, num_class)).mean(axis=0).reshape(
-        (args.test_segments, 1, num_class)
-    ), label[0]
+
+    if args.crop_fusion_type in ['TRN','TRNmultiscale']:
+        rst = rst.reshape(-1, 1, num_class)
+    else:
+        rst = rst.reshape((num_crop, args.test_segments, num_class)).mean(axis=0).reshape((args.test_segments, 1, num_class))
+
+    return i, rst, label[0]
 
 
 proc_start_time = time.time()
 max_num = args.max_num if args.max_num > 0 else len(data_loader.dataset)
+
+top1 = AverageMeter()
+top5 = AverageMeter()
 
 for i, (data, label) in data_gen:
     if i >= max_num:
@@ -128,9 +162,12 @@ for i, (data, label) in data_gen:
     rst = eval_video((i, data, label))
     output.append(rst[1:])
     cnt_time = time.time() - proc_start_time
-    print('video {} done, total {}/{}, average {} sec/video'.format(i, i+1,
+    prec1, prec5 = accuracy(torch.from_numpy(np.mean(rst[1], axis=0)), label, topk=(1, 5))
+    top1.update(prec1[0], 1)
+    top5.update(prec5[0], 1)
+    print('video {} done, total {}/{}, average {:.3f} sec/video, moving Prec@1 {:.3f} Prec@5 {:.3f}'.format(i, i+1,
                                                                     total_num,
-                                                                    float(cnt_time) / (i+1)))
+                                                                    float(cnt_time) / (i+1), top1.avg, top5.avg))
 
 video_pred = [np.argmax(np.mean(x[0], axis=0)) for x in output]
 
@@ -144,25 +181,29 @@ cls_hit = np.diag(cf)
 
 cls_acc = cls_hit / cls_cnt
 
-print(cls_acc)
-
-print('Accuracy {:.02f}%'.format(np.mean(cls_acc) * 100))
+print('-----Evaluation is finished------')
+print('Class Accuracy {:.02f}%'.format(np.mean(cls_acc) * 100))
+print('Overall Prec@1 {:.02f}% Prec@5 {:.02f}%'.format(top1.avg, top5.avg))
 
 if args.save_scores is not None:
 
     # reorder before saving
     name_list = [x.strip().split()[0] for x in open(args.test_list)]
-
     order_dict = {e:i for i, e in enumerate(sorted(name_list))}
-
     reorder_output = [None] * len(output)
     reorder_label = [None] * len(output)
-
+    reorder_pred = [None] * len(output)
+    output_csv = []
     for i in range(len(output)):
         idx = order_dict[name_list[i]]
         reorder_output[idx] = output[i]
         reorder_label[idx] = video_labels[i]
+        reorder_pred[idx] = video_pred[i]
+        output_csv.append('%s;%s'%(name_list[i], categories[video_pred[i]]))
 
-    np.savez(args.save_scores, scores=reorder_output, labels=reorder_label)
+    np.savez(args.save_scores, scores=reorder_output, labels=reorder_label, predictions=reorder_pred, cf=cf)
+
+    with open(args.save_scores.replace('npz','csv'),'w') as f:
+        f.write('\n'.join(output_csv))
 
 

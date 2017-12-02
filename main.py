@@ -18,13 +18,6 @@ import datasets_video
 
 best_prec1 = 0
 
-def check_rootfolders():
-    folders_util = [args.root_log, args.root_model]
-    for folder in folders_util:
-        if not os.path.exists(folder):
-            print('creating folder ' + folder)
-            os.mkdir(folder)
-
 def main():
     global args, best_prec1
     args = parser.parse_args()
@@ -39,7 +32,10 @@ def main():
 
     model = TSN(num_class, args.num_segments, args.modality,
                 base_model=args.arch,
-                consensus_type=args.consensus_type, dropout=args.dropout, partial_bn=not args.no_partialbn)
+                consensus_type=args.consensus_type,
+                dropout=args.dropout,
+                img_feature_dim=args.img_feature_dim,
+                partial_bn=not args.no_partialbn)
 
     crop_size = model.crop_size
     scale_size = model.scale_size
@@ -82,8 +78,8 @@ def main():
                    image_tmpl=prefix,
                    transform=torchvision.transforms.Compose([
                        train_augmentation,
-                       Stack(roll=args.arch == 'BNInception'),
-                       ToTorchFormatTensor(div=args.arch != 'BNInception'),
+                       Stack(roll=(args.arch in ['BNInception','InceptionV3'])),
+                       ToTorchFormatTensor(div=(args.arch not in ['BNInception','InceptionV3'])),
                        normalize,
                    ])),
         batch_size=args.batch_size, shuffle=True,
@@ -98,8 +94,8 @@ def main():
                    transform=torchvision.transforms.Compose([
                        GroupScale(int(scale_size)),
                        GroupCenterCrop(crop_size),
-                       Stack(roll=args.arch == 'BNInception'),
-                       ToTorchFormatTensor(div=args.arch != 'BNInception'),
+                       Stack(roll=(args.arch in ['BNInception','InceptionV3'])),
+                       ToTorchFormatTensor(div=(args.arch not in ['BNInception','InceptionV3'])),
                        normalize,
                    ])),
         batch_size=args.batch_size, shuffle=False,
@@ -312,6 +308,14 @@ def accuracy(output, target, topk=(1,)):
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
+
+def check_rootfolders():
+    """Create log and model folder"""
+    folders_util = [args.root_log, args.root_model, args.root_output]
+    for folder in folders_util:
+        if not os.path.exists(folder):
+            print('creating folder ' + folder)
+            os.mkdir(folder)
 
 
 if __name__ == '__main__':
