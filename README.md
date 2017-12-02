@@ -1,14 +1,22 @@
-# TSN-Pytorch
+# Temporal Relation Networks 
 
-*Now in experimental release, suggestions welcome*.
+This is the codebase of the temporal relation networks, built on top of the [TSN-pytorch codebase](https://github.com/yjxiong/temporal-segment-networks).
 
-**Note**: always use `git clone --recursive https://github.com/yjxiong/tsn-pytorch` to clone this project. 
+**Note**: always use `git clone --recursive https://github.com/metalbubble/TRN-TSN` to clone this project. 
 Otherwise you will not be able to use the inception series CNN archs. 
 
-This is a reimplementation of temporal segment networks (TSN) in PyTorch. All settings are kept identical to the original caffe implementation.
 
-For optical flow extraction and video list generation, you still need to use the original [TSN codebase](https://github.com/yjxiong/temporal-segment-networks).
+The command to train TRN
 
+```bash
+CUDA_VISIBLE_DEVICES=0,1 python main.py something RGB --arch BNInception --num_segments 3 --consensus_type TRN --batch-size 64
+```
+
+
+
+
+# Below is the README from TSN-Pytorch
+---------------------------------
 ## Training
 
 To train a new model, use the `main.py` script.

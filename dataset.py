@@ -46,15 +46,31 @@ class TSNDataSet(data.Dataset):
 
     def _load_image(self, directory, idx):
         if self.modality == 'RGB' or self.modality == 'RGBDiff':
-            return [Image.open(os.path.join(directory, self.image_tmpl.format(idx))).convert('RGB')]
+            try:
+                return [Image.open(os.path.join(self.root_path, directory, self.image_tmpl.format(idx))).convert('RGB')]
+            except Exception:
+                print('error loading image:', os.path.join(self.root_path, directory, self.image_tmpl.format(idx)))
+                return [Image.open(os.path.join(self.root_path, directory, self.image_tmpl.format(1))).convert('RGB')]
         elif self.modality == 'Flow':
-            x_img = Image.open(os.path.join(directory, self.image_tmpl.format('x', idx))).convert('L')
-            y_img = Image.open(os.path.join(directory, self.image_tmpl.format('y', idx))).convert('L')
+            try:
+                idx_skip = 1 + (idx-1)*5
+                flow = Image.open(os.path.join(self.root_path, directory, self.image_tmpl.format(idx_skip))).convert('RGB')
+            except Exception:
+                print('error loading flow file:', os.path.join(self.root_path, directory, self.image_tmpl.format(idx_skip)))
+                flow = Image.open(os.path.join(self.root_path, directory, self.image_tmpl.format(1))).convert('RGB')
+            flow_x, flow_y, _ = flow.split()
+            x_img = flow_x.convert('L')
+            y_img = flow_y.convert('L')
 
             return [x_img, y_img]
 
     def _parse_list(self):
-        self.video_list = [VideoRecord(x.strip().split(' ')) for x in open(self.list_file)]
+        # check the frame number is large >3:
+        # usualy it is [video_id, num_frames, class_idx]
+        tmp = [x.strip().split(' ') for x in open(self.list_file)]
+        tmp = [item for item in tmp if int(item[1])>=3]
+        self.video_list = [VideoRecord(item) for item in tmp]
+        print('video number:%d'%(len(self.video_list)))
 
     def _sample_indices(self, record):
         """
@@ -90,6 +106,11 @@ class TSNDataSet(data.Dataset):
 
     def __getitem__(self, index):
         record = self.video_list[index]
+        # check this is a legit video folder
+        while not os.path.exists(os.path.join(self.root_path, record.path, self.image_tmpl.format(1))):
+            print(os.path.join(self.root_path, record.path, self.image_tmpl.format(1)))
+            index = np.random.randint(len(self.video_list))
+            record = self.video_list[index]
 
         if not self.test_mode:
             segment_indices = self._sample_indices(record) if self.random_shift else self._get_val_indices(record)

@@ -4,6 +4,8 @@ from ops.basic_ops import ConsensusModule, Identity
 from transforms import *
 from torch.nn.init import normal, constant
 
+import TRNmodule
+
 class TSN(nn.Module):
     def __init__(self, num_class, num_segments, modality,
                  base_model='resnet101', new_length=None,
@@ -18,6 +20,7 @@ class TSN(nn.Module):
         self.dropout = dropout
         self.crop_num = crop_num
         self.consensus_type = consensus_type
+        self.img_feature_dim = 256 # the dimension of the CNN feature to represent each frame
         if not before_softmax and consensus_type != 'avg':
             raise ValueError("Only avg consensus can be used after Softmax")
 
@@ -48,8 +51,13 @@ TSN Configurations:
             print("Converting the ImageNet model to RGB+Diff init model")
             self.base_model = self._construct_diff_model(self.base_model)
             print("Done. RGBDiff model ready.")
-
-        self.consensus = ConsensusModule(consensus_type)
+        if consensus_type in ['TRN', 'TRNmultiscale']:
+            # plug in the Temporal Relation Network Module
+            num_frames_total = self.num_segments
+            num_frames_relation = self.num_segments
+            self.consensus = TRNmodule.return_TRN(consensus_type, self.img_feature_dim, num_frames_total, num_frames_relation, num_class)
+        else:
+            self.consensus = ConsensusModule(consensus_type)
 
         if not self.before_softmax:
             self.softmax = nn.Softmax()
@@ -65,7 +73,7 @@ TSN Configurations:
             self.new_fc = None
         else:
             setattr(self.base_model, self.base_model.last_layer_name, nn.Dropout(p=self.dropout))
-            self.new_fc = nn.Linear(feature_dim, num_class)
+            self.new_fc = nn.Linear(feature_dim, self.img_feature_dim)
 
         std = 0.001
         if self.new_fc is None:
@@ -92,8 +100,8 @@ TSN Configurations:
                 self.input_mean = [0.485, 0.456, 0.406] + [0] * 3 * self.new_length
                 self.input_std = self.input_std + [np.mean(self.input_std) * 2] * 3 * self.new_length
         elif base_model == 'BNInception':
-            import tf_model_zoo
-            self.base_model = getattr(tf_model_zoo, base_model)()
+            import model_zoo
+            self.base_model = getattr(model_zoo, base_model)()
             self.base_model.last_layer_name = 'fc'
             self.input_size = 224
             self.input_mean = [104, 117, 128]
@@ -105,8 +113,8 @@ TSN Configurations:
                 self.input_mean = self.input_mean * (1 + self.new_length)
 
         elif 'inception' in base_model:
-            import tf_model_zoo
-            self.base_model = getattr(tf_model_zoo, base_model)()
+            import model_zoo
+            self.base_model = getattr(model_zoo, base_model)()
             self.base_model.last_layer_name = 'classif'
             self.input_size = 299
             self.input_mean = [0.5]
@@ -162,7 +170,7 @@ TSN Configurations:
                 normal_weight.append(ps[0])
                 if len(ps) == 2:
                     normal_bias.append(ps[1])
-                  
+
             elif isinstance(m, torch.nn.BatchNorm1d):
                 bn.extend(list(m.parameters()))
             elif isinstance(m, torch.nn.BatchNorm2d):
