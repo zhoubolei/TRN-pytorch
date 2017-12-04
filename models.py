@@ -72,7 +72,12 @@ TSN Configurations:
             self.new_fc = None
         else:
             setattr(self.base_model, self.base_model.last_layer_name, nn.Dropout(p=self.dropout))
-            self.new_fc = nn.Linear(feature_dim, self.img_feature_dim)
+            if self.consensus_type in ['TRN','TRNmultiscale']:
+                # create a new linear layer as the frame feature
+                self.new_fc = nn.Linear(feature_dim, self.img_feature_dim)
+            else:
+                # the default consensus types in TSN
+                self.new_fc = nn.Linear(feature_dim, num_class)
 
         std = 0.001
         if self.new_fc is None:

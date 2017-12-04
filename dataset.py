@@ -58,6 +58,7 @@ class TSNDataSet(data.Dataset):
             except Exception:
                 print('error loading flow file:', os.path.join(self.root_path, directory, self.image_tmpl.format(idx_skip)))
                 flow = Image.open(os.path.join(self.root_path, directory, self.image_tmpl.format(1))).convert('RGB')
+            # the input flow file is RGB image with (flow_x, flow_y, blank) for each channel
             flow_x, flow_y, _ = flow.split()
             x_img = flow_x.convert('L')
             y_img = flow_y.convert('L')

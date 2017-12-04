@@ -5,12 +5,12 @@ import numpy as np
 import torch.nn.parallel
 import torch.optim
 from sklearn.metrics import confusion_matrix
-
 from dataset import TSNDataSet
 from models import TSN
 from transforms import *
 from ops import ConsensusModule
 import datasets_video
+import pdb
 
 # options
 parser = argparse.ArgumentParser(
@@ -68,7 +68,6 @@ def accuracy(output, target, topk=(1,)):
 
 categories, args.train_list, args.val_list, args.root_path, prefix = datasets_video.return_dataset(args.dataset, args.modality)
 num_class = len(categories)
-
 
 net = TSN(num_class, args.test_segments if args.crop_fusion_type in ['TRN','TRNmultiscale'] else 1, args.modality,
           base_model=args.arch,
