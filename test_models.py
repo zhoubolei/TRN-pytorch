@@ -11,6 +11,8 @@ from transforms import *
 from ops import ConsensusModule
 import datasets_video
 import pdb
+from torch.nn import functional as F
+
 
 # options
 parser = argparse.ArgumentParser(
@@ -31,6 +33,7 @@ parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
 parser.add_argument('--gpus', nargs='+', type=int, default=None)
 parser.add_argument('--img_feature_dim',type=int, default=256)
 parser.add_argument('--num_set_segments',type=int, default=1,help='TODO: select multiply set of n-frames from a video')
+parser.add_argument('--softmax', type=int, default=0)
 
 args = parser.parse_args()
 
@@ -139,7 +142,12 @@ def eval_video(video_data):
 
     input_var = torch.autograd.Variable(data.view(-1, length, data.size(2), data.size(3)),
                                         volatile=True)
-    rst = net(input_var).data.cpu().numpy().copy()
+    rst = net(input_var)
+    if args.softmax==1:
+        # take the softmax to normalize the output to probability
+        rst = F.softmax(rst)
+
+    rst = rst.data.cpu().numpy().copy()
 
     if args.crop_fusion_type in ['TRN','TRNmultiscale']:
         rst = rst.reshape(-1, 1, num_class)
@@ -187,7 +195,7 @@ print('Overall Prec@1 {:.02f}% Prec@5 {:.02f}%'.format(top1.avg, top5.avg))
 if args.save_scores is not None:
 
     # reorder before saving
-    name_list = [x.strip().split()[0] for x in open(args.test_list)]
+    name_list = [x.strip().split()[0] for x in open(args.val_list)]
     order_dict = {e:i for i, e in enumerate(sorted(name_list))}
     reorder_output = [None] * len(output)
     reorder_label = [None] * len(output)
