@@ -47,9 +47,10 @@ python test_models.py something RGB model/TRN_something_RGB_BNInception_TRNmulti
 
 ### TODO
 
+* TODO: pretrained models, and single video testing script
 * TODO: Web-cam demo script
 * TODO: Visualization script
-
+* TODO: class-aware data augmentation
 
 ### Reference:
 B. Zhou, A. Andonian, and A. Torralba. Temporal Relational Reasoning in Videos. arXiv:1711.08496, 2017. [PDF](https://arxiv.org/pdf/1711.08496.pdf)
