@@ -2,8 +2,8 @@
 
 We release the code of the [Temporal Relation Networks](http://relation.csail.mit.edu/), built on top of the [TSN-pytorch codebase](https://github.com/yjxiong/temporal-segment-networks).
 
-**Note**: always use `git clone --recursive https://github.com/metalbubble/TRN-TSN` to clone this project
-Otherwise you will not be able to use the inception series CNN archs. 
+**Note**: always use `git clone --recursive https://github.com/metalbubble/TRN-pytorch` to clone this project
+Otherwise you will not be able to use the inception series CNN architecture. 
 
 ![framework](http://relation.csail.mit.edu/framework_trn.png)
 
