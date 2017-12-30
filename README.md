@@ -45,9 +45,23 @@ python test_models.py something RGB model/TRN_something_RGB_BNInception_TRNmulti
    --arch BNInception --crop_fusion_type TRNmultiscale --test_segments 8
 ```
 
+### Pretrained models (working on it)
+
+* Download pretrained models on [Something-Something](https://www.twentybn.com/datasets/something-something), [Jester](https://www.twentybn.com/datasets/jester), and [Moments in Time](http://moments.csail.mit.edu/)
+
+```bash
+cd pretrain
+./download_models.sh
+```
+
+* Test pretrained model.
+
+```bash
+python test_video.py something RGB pretrain/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar
+```
+
 ### TODO
 
-* TODO: pretrained models, and single video testing script
 * TODO: Web-cam demo script
 * TODO: Visualization script
 * TODO: class-aware data augmentation
