@@ -91,6 +91,8 @@ categories_file = 'pretrain/{}_categories.txt'.format(args.dataset)
 categories = [line.rstrip() for line in open(categories_file, 'r').readlines()]
 num_class = len(categories)
 
+args.arch = 'InceptionV3' if args.dataset == 'moments' else 'BNInception'
+
 # Load model.
 net = TSN(num_class,
           args.test_segments,
