@@ -45,7 +45,7 @@ python test_models.py something RGB model/TRN_something_RGB_BNInception_TRNmulti
    --arch BNInception --crop_fusion_type TRNmultiscale --test_segments 8
 ```
 
-### Pretrained models (working on it)
+### Pretrained models and demo code
 
 * Download pretrained models on [Something-Something](https://www.twentybn.com/datasets/something-something), [Jester](https://www.twentybn.com/datasets/jester), and [Moments in Time](http://moments.csail.mit.edu/)
 
@@ -54,27 +54,33 @@ cd pretrain
 ./download_models.sh
 ```
 
-* Download sample video and extracted frames
+* Download sample video and extracted frames. There will be mp4 video file and a folder containing the RGB frames for that video.
 
 ```bash
 cd sample_data
 ./download_sample_data.sh
 ```
 
+* Test pretrained model trained on Something-Something
+
+```bash
+python test_video.py --frame_folder sample_data/juggling_frames --weight pretrain/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar --arch BNInception --dataset something
+```
+
+* Test pretrained model trained on [Moments in Time](http://moments.csail.mit.edu/)
+
+```bash
+python test_video.py --frame_folder sample_data/juggling_frames --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar --arch InceptionV3 --dataset moments
+```
+
 * Test pretrained model on mp4 video file
 
 ```bash
-python test_video.py --video_file sample_data/juggling.mp4 --rendered_output sample_data/predicted_video.mp4
+#python test_video.py --video_file sample_data/juggling.mp4 --rendered_output sample_data/predicted_video.mp4 --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar --arch InceptionV3 --dataset moments
 ```
 
 The command above uses `ffmpeg` to extract frames from the supplied video `--video_file` and optionally generates a new video `--rendered_output` from the frames used to make the prediction with the predicted category in the top-left corner.
 
-* Alternatively, if you wish to extract video frames yourself, you can test a pretrained model using a text file specifying the path to the individual frames of the video.
-
-```bash
-# Make prediction using list of extracted video frames.
-python test_video.py --frame_list sample_data/juggling_frame_list.txt
-```
 
 ### TODO
 

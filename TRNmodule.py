@@ -11,7 +11,7 @@ class RelationModule(torch.nn.Module):
     # this is the naive implementation of the n-frame relation module, as num_frames == num_frames_relation
     def __init__(self, img_feature_dim, num_frames, num_class):
         super(RelationModule, self).__init__()
-	self.num_frames = num_frames
+        self.num_frames = num_frames
         self.num_class = num_class
         self.img_feature_dim = img_feature_dim
         self.classifier = self.fc_fusion()
@@ -21,7 +21,7 @@ class RelationModule(torch.nn.Module):
         classifier = nn.Sequential(
                 nn.ReLU(),
                 nn.Linear(self.num_frames * self.img_feature_dim, num_bottleneck),
-		nn.ReLU(),
+                nn.ReLU(),
                 nn.Linear(num_bottleneck,self.num_class),
                 )
         return classifier
@@ -61,9 +61,7 @@ class RelationModuleMultiScale(torch.nn.Module):
 
             self.fc_fusion_scales += [fc_fusion]
 
-        # maybe we put another fc layer after the summed up results???
-        print('Multi-Scale Temporal Relation Network Module in use')
-        print(['%d-frame relation' % i for i in self.scales])
+        print('Multi-Scale Temporal Relation Network Module in use', ['%d-frame relation' % i for i in self.scales])
 
     def forward(self, input):
         # the first one is the largest scale
