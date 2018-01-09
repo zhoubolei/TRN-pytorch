@@ -64,19 +64,25 @@ cd sample_data
 * Test pretrained model trained on Something-Something
 
 ```bash
-python test_video.py --frame_folder sample_data/juggling_frames --weight pretrain/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar --arch BNInception --dataset something
+python test_video.py --arch BNInception --dataset something
+    --weight pretrain/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar 
+    --frame_folder sample_data/juggling_frames 
 ```
 
 * Test pretrained model trained on [Moments in Time](http://moments.csail.mit.edu/)
 
 ```bash
-python test_video.py --frame_folder sample_data/juggling_frames --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar --arch InceptionV3 --dataset moments
+python test_video.py --arch InceptionV3 --dataset moments
+    --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar
+    --frame_folder sample_data/juggling_frames 
 ```
 
 * Test pretrained model on mp4 video file
 
 ```bash
-#python test_video.py --video_file sample_data/juggling.mp4 --rendered_output sample_data/predicted_video.mp4 --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar --arch InceptionV3 --dataset moments
+python test_video.py --arch InceptionV3 --dataset moments
+    --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar 
+    --video_file sample_data/juggling.mp4 --rendered_output sample_data/predicted_video.mp4 
 ```
 
 The command above uses `ffmpeg` to extract frames from the supplied video `--video_file` and optionally generates a new video `--rendered_output` from the frames used to make the prediction with the predicted category in the top-left corner.
