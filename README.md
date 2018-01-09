@@ -64,24 +64,24 @@ cd sample_data
 * Test pretrained model trained on Something-Something
 
 ```bash
-python test_video.py --arch BNInception --dataset something
-    --weight pretrain/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar 
+python test_video.py --arch BNInception --dataset something \
+    --weight pretrain/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar \
     --frame_folder sample_data/juggling_frames 
 ```
 
 * Test pretrained model trained on [Moments in Time](http://moments.csail.mit.edu/)
 
 ```bash
-python test_video.py --arch InceptionV3 --dataset moments
-    --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar
+python test_video.py --arch InceptionV3 --dataset moments \
+    --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar \
     --frame_folder sample_data/juggling_frames 
 ```
 
 * Test pretrained model on mp4 video file
 
 ```bash
-python test_video.py --arch InceptionV3 --dataset moments
-    --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar 
+python test_video.py --arch InceptionV3 --dataset moments \
+    --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar \
     --video_file sample_data/juggling.mp4 --rendered_output sample_data/predicted_video.mp4 
 ```
 
