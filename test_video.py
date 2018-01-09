@@ -1,69 +1,149 @@
 # test the pre-trained model on a single video
 # (working on it)
-# Bolei Zhou
+# Bolei Zhou and Alex Andonian
 
+import os
+import re
+import cv2
 import argparse
-import time
-
+import functools
+import subprocess
 import numpy as np
+from PIL import Image
+import moviepy.editor as mpy
+
 import torch.nn.parallel
 import torch.optim
-from sklearn.metrics import confusion_matrix
-from dataset import TSNDataSet
 from models import TSN
 from transforms import *
-from ops import ConsensusModule
 import datasets_video
-import pdb
 from torch.nn import functional as F
 
 
-# options
-parser = argparse.ArgumentParser(
-    description="test TRN on a single video")
-parser.add_argument('dataset', type=str, choices=['something','jester','moments','charades'])
-parser.add_argument('modality', type=str, choices=['RGB', 'Flow', 'RGBDiff'])
-parser.add_argument('weights', type=str)
-parser.add_argument('--arch', type=str, default="resnet101")
-parser.add_argument('--save_scores', type=str, default=None)
-parser.add_argument('--test_segments', type=int, default=25)
-parser.add_argument('--max_num', type=int, default=-1)
-parser.add_argument('--test_crops', type=int, default=10)
-parser.add_argument('--input_size', type=int, default=224)
-parser.add_argument('--crop_fusion_type', type=str, default='TRN',
-                    choices=['avg', 'TRN','TRNmultiscale'])
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
-                    help='number of data loading workers (default: 4)')
-parser.add_argument('--gpus', nargs='+', type=int, default=None)
-parser.add_argument('--img_feature_dim',type=int, default=256)
-parser.add_argument('--num_set_segments',type=int, default=1,help='TODO: select multiply set of n-frames from a video')
-parser.add_argument('--softmax', type=int, default=0)
+def extract_frames(video_file, num_frames=8):
+    try:
+        os.makedirs(os.path.join(os.getcwd(), 'frames'))
+    except OSError:
+        pass
 
+    output = subprocess.Popen(['ffmpeg', '-i', video_file],
+                              stderr=subprocess.PIPE).communicate()
+    # Search and parse 'Duration: 00:05:24.13,' from ffmpeg stderr.
+    re_duration = re.compile('Duration: (.*?)\.')
+    duration = re_duration.search(str(output[1])).groups()[0]
+
+    seconds = functools.reduce(lambda x, y: x * 60 + y,
+                               map(int, duration.split(':')))
+    rate = num_frames / float(seconds)
+
+    output = subprocess.Popen(['ffmpeg', '-i', video_file,
+                               '-vf', 'fps={}'.format(rate),
+                               '-vframes', str(num_frames),
+                               '-loglevel', 'panic',
+                               'frames/%d.jpg']).communicate()
+    frame_paths = sorted([os.path.join('frames', frame)
+                          for frame in os.listdir('frames')])
+
+    frames = load_frames(frame_paths)
+    subprocess.call(['rm', '-rf', 'frames'])
+    return frames
+
+
+def load_frames(frame_paths, num_frames=8):
+    frames = [Image.open(frame).convert('RGB') for frame in frame_paths]
+    if len(frames) >= num_frames:
+        return frames[::int(np.ceil(len(frames) / float(num_frames)))]
+    else:
+        raise ValueError('Video must have at least {} frames'.format(num_frames))
+
+
+def render_frames(frames, prediction):
+    rendered_frames = []
+    for frame in frames:
+        img = np.array(frame)
+        height, width, _ = img.shape
+        cv2.putText(img, prediction,
+                    (1, int(height / 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1, (255, 255, 255), 2)
+        rendered_frames.append(img)
+    return rendered_frames
+
+
+# options
+parser = argparse.ArgumentParser(description="test TRN on a single video")
+group = parser.add_mutually_exclusive_group(required=True)
+group.add_argument('--video_file', type=str, default=None)
+group.add_argument('--frame_list', type=str, default=None)
+parser.add_argument('--modality', type=str, default='RGB',
+                    choices=['RGB', 'Flow', 'RGBDiff'], )
+parser.add_argument('--dataset', type=str, default='moments',
+                    choices=['something', 'jester', 'moments'])
+parser.add_argument('--rendered_output', type=str, default=None)
+parser.add_argument('--arch', type=str, default="InceptionV3")
+parser.add_argument('--input_size', type=int, default=224)
+parser.add_argument('--test_segments', type=int, default=8)
+parser.add_argument('--img_feature_dim', type=int, default=256)
 args = parser.parse_args()
 
+# Get dataset categories.
+categories_file = 'pretrain/{}_categories.txt'.format(args.dataset)
+categories = [line.rstrip() for line in open(categories_file, 'r').readlines()]
+num_class = len(categories)
 
-net = TSN(num_class, args.test_segments if args.crop_fusion_type in ['TRN','TRNmultiscale'] else 1, args.modality,
+# Load model.
+net = TSN(num_class,
+          args.test_segments,
+          args.modality,
           base_model=args.arch,
-          consensus_type=args.crop_fusion_type,
-          img_feature_dim=args.img_feature_dim,
-          )
+          consensus_type='TRNmultiscale',
+          img_feature_dim=args.img_feature_dim)
 
-checkpoint = torch.load(args.weights)
+weights = 'pretrain/TRN_{}_RGB_{}_TRNmultiscale_segment8_best.pth.tar'.format(
+    args.dataset, args.arch)
+checkpoint = torch.load(weights)
 print("model epoch {} best prec@1: {}".format(checkpoint['epoch'], checkpoint['best_prec1']))
 
-base_dict = {'.'.join(k.split('.')[1:]): v for k,v in list(checkpoint['state_dict'].items())}
+base_dict = {'.'.join(k.split('.')[1:]): v for k, v in list(checkpoint['state_dict'].items())}
 net.load_state_dict(base_dict)
+net.cuda().eval()
 
-if args.test_crops == 1:
-    cropping = torchvision.transforms.Compose([
-        GroupScale(net.scale_size),
-        GroupCenterCrop(net.input_size),
-    ])
-elif args.test_crops == 10:
-    cropping = torchvision.transforms.Compose([
-        GroupOverSample(net.input_size, net.scale_size)
-    ])
+# Initialize frame transforms.
+
+transform = torchvision.transforms.Compose([
+    GroupOverSample(net.input_size, net.scale_size),
+    Stack(roll=(args.arch in ['BNInception', 'InceptionV3'])),
+    ToTorchFormatTensor(div=(args.arch not in ['BNInception', 'InceptionV3'])),
+    GroupNormalize(net.input_mean, net.input_std),
+])
+
+# Obtain video frames
+if args.frame_list is not None:
+    print('Loading frames listed in text file...')
+    frame_paths = [line.rstrip() for line in open(args.frame_list, 'r').readlines()]
+    frames = load_frames(frame_paths)
 else:
-    raise ValueError("Only 1 and 10 crops are supported while we got {}".format(args.test_crops))
+    print('Extracting frames using ffmpeg...')
+    frames = extract_frames(args.video_file, args.test_segments)
 
-# too lazy to continue...(#,#!)
+
+# Make video prediction.
+data = transform(frames)
+input_var = torch.autograd.Variable(data.view(-1, 3, data.size(1), data.size(2)),
+                                    volatile=True).unsqueeze(0).cuda()
+logits = net(input_var)
+h_x = torch.mean(F.softmax(logits, 1), dim=0).data
+probs, idx = h_x.sort(0, True)
+
+# Output the prediction.
+video_name = args.frame_list if args.frame_list is not None else args.video_file
+print('RESULT ON ' + video_name)
+for i in range(0, 5):
+    print('{:.3f} -> {}'.format(probs[i], categories[idx[i]]))
+
+# Render output frames with prediction text.
+if args.rendered_output is not None:
+    prediction = categories[idx[0]]
+    rendered_frames = render_frames(frames, prediction)
+    clip = mpy.ImageSequenceClip(rendered_frames, fps=4)
+    clip.write_videofile(args.rendered_output)

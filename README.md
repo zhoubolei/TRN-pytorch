@@ -3,7 +3,7 @@
 We release the code of the [Temporal Relation Networks](http://relation.csail.mit.edu/), built on top of the [TSN-pytorch codebase](https://github.com/yjxiong/temporal-segment-networks).
 
 **Note**: always use `git clone --recursive https://github.com/metalbubble/TRN-pytorch` to clone this project
-Otherwise you will not be able to use the inception series CNN architecture. 
+Otherwise you will not be able to use the inception series CNN architecture.
 
 ![framework](http://relation.csail.mit.edu/framework_trn.png)
 
@@ -54,10 +54,26 @@ cd pretrain
 ./download_models.sh
 ```
 
-* Test pretrained model.
+* Download sample video and extracted frames
 
 ```bash
-python test_video.py something RGB pretrain/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar
+cd sample_data
+./download_sample_data.sh
+```
+
+* Test pretrained model on mp4 video file
+
+```bash
+python test_video.py --video_file sample_data/juggling.mp4 --rendered_output sample_data/predicted_video.mp4
+```
+
+The command above uses `ffmpeg` to extract frames from the supplied video `--video_file` and optionally generates a new video `--rendered_output` from the frames used to make the prediction with the predicted category in the top-left corner.
+
+* Alternatively, if you wish to extract video frames yourself, you can test a pretrained model using a text file specifying the path to the individual frames of the video.
+
+```bash
+# Make prediction using list of extracted video frames.
+python test_video.py --frame_list sample_data/juggling_frame_list.txt
 ```
 
 ### TODO
