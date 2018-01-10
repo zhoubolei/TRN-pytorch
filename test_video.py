@@ -74,7 +74,7 @@ def render_frames(frames, prediction):
 parser = argparse.ArgumentParser(description="test TRN on a single video")
 group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument('--video_file', type=str, default=None)
-group.add_argument('--frame_list', type=str, default=None)
+group.add_argument('--frame_folder', type=str, default=None)
 parser.add_argument('--modality', type=str, default='RGB',
                     choices=['RGB', 'Flow', 'RGBDiff'], )
 parser.add_argument('--dataset', type=str, default='moments',
@@ -84,6 +84,9 @@ parser.add_argument('--arch', type=str, default="InceptionV3")
 parser.add_argument('--input_size', type=int, default=224)
 parser.add_argument('--test_segments', type=int, default=8)
 parser.add_argument('--img_feature_dim', type=int, default=256)
+parser.add_argument('--consensus_type', type=str, default='TRNmultiscale')
+parser.add_argument('--weight', type=str)
+
 args = parser.parse_args()
 
 # Get dataset categories.
@@ -98,13 +101,12 @@ net = TSN(num_class,
           args.test_segments,
           args.modality,
           base_model=args.arch,
-          consensus_type='TRNmultiscale',
-          img_feature_dim=args.img_feature_dim)
+          consensus_type=args.consensus_type,
+          img_feature_dim=args.img_feature_dim, print_spec=False)
 
-weights = 'pretrain/TRN_{}_RGB_{}_TRNmultiscale_segment8_best.pth.tar'.format(
-    args.dataset, args.arch)
+weights = args.weight
 checkpoint = torch.load(weights)
-print("model epoch {} best prec@1: {}".format(checkpoint['epoch'], checkpoint['best_prec1']))
+#print("model epoch {} best prec@1: {}".format(checkpoint['epoch'], checkpoint['best_prec1']))
 
 base_dict = {'.'.join(k.split('.')[1:]): v for k, v in list(checkpoint['state_dict'].items())}
 net.load_state_dict(base_dict)
@@ -120,9 +122,11 @@ transform = torchvision.transforms.Compose([
 ])
 
 # Obtain video frames
-if args.frame_list is not None:
-    print('Loading frames listed in text file...')
-    frame_paths = [line.rstrip() for line in open(args.frame_list, 'r').readlines()]
+if args.frame_folder is not None:
+    print('Loading frames in %s'%args.frame_folder)
+    import glob
+    # here make sure after sorting the frame paths have the correct temporal order
+    frame_paths = sorted(glob.glob(os.path.join(args.frame_folder, '*.jpg')))
     frames = load_frames(frame_paths)
 else:
     print('Extracting frames using ffmpeg...')
@@ -138,7 +142,7 @@ h_x = torch.mean(F.softmax(logits, 1), dim=0).data
 probs, idx = h_x.sort(0, True)
 
 # Output the prediction.
-video_name = args.frame_list if args.frame_list is not None else args.video_file
+video_name = args.frame_folder if args.frame_folder is not None else args.video_file
 print('RESULT ON ' + video_name)
 for i in range(0, 5):
     print('{:.3f} -> {}'.format(probs[i], categories[idx[i]]))

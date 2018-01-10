@@ -11,7 +11,7 @@ class TSN(nn.Module):
                  base_model='resnet101', new_length=None,
                  consensus_type='avg', before_softmax=True,
                  dropout=0.8,img_feature_dim=256,
-                 crop_num=1, partial_bn=True):
+                 crop_num=1, partial_bn=True, print_spec=True):
         super(TSN, self).__init__()
         self.modality = modality
         self.num_segments = num_segments
@@ -28,17 +28,17 @@ class TSN(nn.Module):
             self.new_length = 1 if modality == "RGB" else 5
         else:
             self.new_length = new_length
-
-        print(("""
-Initializing TSN with base model: {}.
-TSN Configurations:
-    input_modality:     {}
-    num_segments:       {}
-    new_length:         {}
-    consensus_module:   {}
-    dropout_ratio:      {}
-    img_feature_dim:    {}
-        """.format(base_model, self.modality, self.num_segments, self.new_length, consensus_type, self.dropout, self.img_feature_dim)))
+        if print_spec == True:
+            print(("""
+    Initializing TSN with base model: {}.
+    TSN Configurations:
+        input_modality:     {}
+        num_segments:       {}
+        new_length:         {}
+        consensus_module:   {}
+        dropout_ratio:      {}
+        img_feature_dim:    {}
+            """.format(base_model, self.modality, self.num_segments, self.new_length, consensus_type, self.dropout, self.img_feature_dim)))
 
         self._prepare_base_model(base_model)
 
