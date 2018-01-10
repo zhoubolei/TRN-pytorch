@@ -62,6 +62,7 @@ cd sample_data
 ```
 
 The sample video is the following 
+
 ![result](http://relation.csail.mit.edu/data/juggling.gif)
 
 * Test pretrained model trained on Something-Something
