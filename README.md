@@ -61,13 +61,23 @@ cd sample_data
 ./download_sample_data.sh
 ```
 
+The sample video is the following 
+![result](http://relation.csail.mit.edu/data/juggling.gif)
+
 * Test pretrained model trained on Something-Something
 
 ```bash
 python test_video.py --arch BNInception --dataset something \
     --weight pretrain/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar \
     --frame_folder sample_data/juggling_frames 
+
+
+RESULT ON sample_data/juggling_frames
+0.848 -> Throwing something in the air and catching it
+0.140 -> Throwing something in the air and letting it fall
+0.003 -> Hitting something with something
 ```
+
 
 * Test pretrained model trained on [Moments in Time](http://moments.csail.mit.edu/)
 
@@ -75,6 +85,12 @@ python test_video.py --arch BNInception --dataset something \
 python test_video.py --arch InceptionV3 --dataset moments \
     --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar \
     --frame_folder sample_data/juggling_frames 
+
+
+RESULT ON sample_data/juggling_frames
+1.000 -> juggling
+0.000 -> catching
+0.000 -> balancing
 ```
 
 * Test pretrained model on mp4 video file
