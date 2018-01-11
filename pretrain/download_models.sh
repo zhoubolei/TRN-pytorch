@@ -2,6 +2,7 @@
 # Download the pre-trained TRN models
 echo 'Downloading TRNmultiscale on Something-Something'
 wget http://relation.csail.mit.edu/models/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar
+wget http://relation.csail.mit.edu/models/TRN_something_RGB_BNInception_TRN_segment3_best.pth.tar
 wget http://relation.csail.mit.edu/models/something_categories.txt
 
 echo 'Downloading TRNmultiscale on Jester'
