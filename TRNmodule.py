@@ -161,7 +161,7 @@ if __name__ == "__main__":
     num_frames = 5
     num_class = 174
     img_feature_dim = 512
-    input_var = Variable(torch.randn(batch_size, num_frames, num_class))
+    input_var = Variable(torch.randn(batch_size, num_frames, img_feature_dim))
     model = RelationModuleMultiScale(img_feature_dim, num_frames, num_class)
     output = model(input_var)
     print(output)
