@@ -8,7 +8,7 @@ Otherwise you will not be able to use the inception series CNN architecture.
 ![framework](http://relation.csail.mit.edu/framework_trn.png)
 
 ### Data preparation
-Download the [something-something dataset](https://www.twentybn.com/datasets/something-something) or [jester dataset](https://www.twentybn.com/datasets/something-something) or [charades dataset](http://allenai.org/plato/charades/). Decompress them into some folder. Use [process_dataset.py](process_dataset.py) to generate the index files for train, val, and test split. Finally properly set up the train, validatin, and category meta files in [datasets_video.py](datasets_video.py).
+Download the [something-something dataset](https://www.twentybn.com/datasets/something-something) or [jester dataset](https://www.twentybn.com/datasets/jester) or [charades dataset](http://allenai.org/plato/charades/). Decompress them into some folder. Use [process_dataset.py](process_dataset.py) to generate the index files for train, val, and test split. Finally properly set up the train, validatin, and category meta files in [datasets_video.py](datasets_video.py).
 
 ### Code
 
