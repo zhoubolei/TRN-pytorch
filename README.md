@@ -62,20 +62,22 @@ cd sample_data
 ```
 
 The sample video is the following 
-![result](http://relation.csail.mit.edu/data/juggling.gif)
+![result](http://relation.csail.mit.edu/data/bolei_juggling.gif): Bolei is juggling:) 
 
 * Test pretrained model trained on Something-Something
 
 ```bash
 python test_video.py --arch BNInception --dataset something \
     --weight pretrain/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar \
-    --frame_folder sample_data/juggling_frames 
+    --frame_folder sample_data/bolei_juggling
 
+RESULT ON sample_data/bolei_juggling
+0.244 -> Throwing something in the air and catching it
+0.186 -> Throwing something in the air and letting it fall
+0.094 -> Showing a photo of something to the camera
+0.063 -> Hitting something with something
+0.040 -> Holding something in front of something
 
-RESULT ON sample_data/juggling_frames
-0.848 -> Throwing something in the air and catching it
-0.140 -> Throwing something in the air and letting it fall
-0.003 -> Hitting something with something
 ```
 
 
@@ -84,13 +86,15 @@ RESULT ON sample_data/juggling_frames
 ```bash
 python test_video.py --arch InceptionV3 --dataset moments \
     --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar \
-    --frame_folder sample_data/juggling_frames 
+    --frame_folder sample_data/bolei_juggling
 
+RESULT ON sample_data/bolei_juggling
 
-RESULT ON sample_data/juggling_frames
-1.000 -> juggling
-0.000 -> catching
-0.000 -> balancing
+0.982 -> juggling
+0.003 -> flipping
+0.003 -> spinning
+0.003 -> smoking
+0.002 -> whistling
 ```
 
 * Test pretrained model on mp4 video file
@@ -98,7 +102,7 @@ RESULT ON sample_data/juggling_frames
 ```bash
 python test_video.py --arch InceptionV3 --dataset moments \
     --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar \
-    --video_file sample_data/juggling.mp4 --rendered_output sample_data/predicted_video.mp4 
+    --video_file sample_data/bolei_juggling.mp4 --rendered_output sample_data/predicted_video.mp4 
 ```
 
 The command above uses `ffmpeg` to extract frames from the supplied video `--video_file` and optionally generates a new video `--rendered_output` from the frames used to make the prediction with the predicted category in the top-left corner.

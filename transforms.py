@@ -86,7 +86,7 @@ class GroupScale(object):
     """
 
     def __init__(self, size, interpolation=Image.BILINEAR):
-        self.worker = torchvision.transforms.Scale(size, interpolation)
+        self.worker = torchvision.transforms.Resize(size, interpolation)
 
     def __call__(self, img_group):
         return [self.worker(img) for img in img_group]

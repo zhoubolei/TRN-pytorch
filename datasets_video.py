@@ -12,7 +12,12 @@ def return_something(modality):
         root_data = '/data/vision/oliva/scratch/bzhou/video/something-something/20bn-something-something-v1'
         filename_imglist_train = 'something/train_videofolder.txt'
         filename_imglist_val = 'something/val_videofolder.txt'
-
+        prefix = '{:05d}.jpg'
+    elif modality == 'Flow':
+        #root_data = '/data/vision/oliva/scratch/bzhou/video/something-something/flow'
+        root_data = '/mnt/localssd1/bzhou/something/flow'
+        filename_imglist_train = 'something/train_videofolder.txt'
+        filename_imglist_val = 'something/val_videofolder.txt'
         prefix = '{:05d}.jpg'
     else:
         print('no such modality:'+modality)

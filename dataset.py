@@ -53,10 +53,10 @@ class TSNDataSet(data.Dataset):
                 return [Image.open(os.path.join(self.root_path, directory, self.image_tmpl.format(1))).convert('RGB')]
         elif self.modality == 'Flow':
             try:
-                idx_skip = 1 + (idx-1)*5
-                flow = Image.open(os.path.join(self.root_path, directory, self.image_tmpl.format(idx_skip))).convert('RGB')
+                #idx_skip = 1 + (idx-1)*5
+                flow = Image.open(os.path.join(self.root_path, directory, self.image_tmpl.format(idx))).convert('RGB')
             except Exception:
-                print('error loading flow file:', os.path.join(self.root_path, directory, self.image_tmpl.format(idx_skip)))
+                print('error loading flow file:', os.path.join(self.root_path, directory, self.image_tmpl.format(idx)))
                 flow = Image.open(os.path.join(self.root_path, directory, self.image_tmpl.format(1))).convert('RGB')
             # the input flow file is RGB image with (flow_x, flow_y, blank) for each channel
             flow_x, flow_y, _ = flow.split()
@@ -70,6 +70,12 @@ class TSNDataSet(data.Dataset):
         # usualy it is [video_id, num_frames, class_idx]
         tmp = [x.strip().split(' ') for x in open(self.list_file)]
         tmp = [item for item in tmp if int(item[1])>=3]
+
+        if self.modality == 'Flow':
+            # flow model has one frame less
+            for i in range(len(tmp)):
+                tmp[i][1] = str(int(tmp[i][1]) - 1)
+
         self.video_list = [VideoRecord(item) for item in tmp]
         print('video number:%d'%(len(self.video_list)))
 
