@@ -26,7 +26,7 @@ class VideoRecord(object):
 class TSNDataSet(data.Dataset):
     def __init__(self, root_path, list_file,
                  num_segments=3, new_length=1, modality='RGB',
-                 image_tmpl='img_{:05d}.jpg', transform=None,
+                 image_tmpl='{:05d}.jpg', transform=None,
                  force_grayscale=False, random_shift=True, test_mode=False):
 
         self.root_path = root_path
