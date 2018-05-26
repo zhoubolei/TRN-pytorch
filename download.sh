@@ -2,14 +2,17 @@
 # Download the pre-trained TRN models
 echo 'Downloading TRNmultiscale on Something-Something'
 wget -P pretrain http://relation.csail.mit.edu/models/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar
+wget -P pretrain http://relation.csail.mit.edu/models/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best_v0.4.pth.tar
 wget -P pretrain http://relation.csail.mit.edu/models/something_categories.txt
 
 echo 'Downloading TRNmultiscale on Jester'
 wget -P pretrain http://relation.csail.mit.edu/models/TRN_jester_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar
+wget -P pretrain http://relation.csail.mit.edu/models/TRN_jester_RGB_BNInception_TRNmultiscale_segment8_best_v0.4.pth.tar
 wget -P pretrain http://relation.csail.mit.edu/models/jester_categories.txt
 
 echo 'Downloading TRNmultiscale on Moments in Time'
 wget -P pretrain http://relation.csail.mit.edu/models/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar
+wget -P pretrain http://relation.csail.mit.edu/models/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best_v0.4.pth.tar
 wget -P pretrain http://relation.csail.mit.edu/models/moments_categories.txt
 
 echo 'Downloading sample test video and extracted frames'
