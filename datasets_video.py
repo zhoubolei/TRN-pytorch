@@ -53,8 +53,10 @@ def return_moments(modality):
     if modality == 'RGB':
         prefix = '{:05d}.jpg'
         root_data = '/home/shared/Moments_in_Time_Mini_Stream/' #/data/vision/oliva/scratch/moments/moments_nov17_frames'
-        filename_imglist_train = '/home/shared/Moments_in_Time_Mini_Stream/training_frames.txt' #/data/vision/oliva/scratch/moments/split/rgb_trainingSet_nov17.csv'
-        filename_imglist_val = '/home/shared/Moments_in_Time_Mini_Stream/validation_frames.txt' #/data/vision/oliva/scratch/moments/split/rgb_validationSet_nov17.csv'
+        filename_imglist_train = '/home/shared/Moments_in_Time_Mini_Stream/training_frames_nano.txt' 
+#'/home/shared/Moments_in_Time_Mini_Stream/training_frames.txt' #/data/vision/oliva/scratch/moments/split/rgb_trainingSet_nov17.csv'
+        filename_imglist_val = '/home/shared/Moments_in_Time_Mini_Stream/validation_frames_nano.txt'
+# '/home/shared/Moments_in_Time_Mini_Stream/validation_frames.txt' #/data/vision/oliva/scratch/moments/split/rgb_validationSet_nov17.csv'
 
     elif modality == 'Flow':
         root_data = '/data/vision/oliva/scratch/moments/moments_nov17_flow'

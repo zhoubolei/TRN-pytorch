@@ -14,7 +14,7 @@ from models import TSN
 from transforms import *
 from opts import parser
 import datasets_video
-
+from datetime import datetime
 
 best_prec1 = 0
 
@@ -120,7 +120,12 @@ def main():
         validate(val_loader, model, criterion, 0)
         return
 
-    log_training = open(os.path.join(args.root_log, '%s.csv' % args.store_name), 'w')
+    time = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+    log_file_path = os.path.join(args.root_log, time + "_" + '%s.csv' % args.store_name)
+    print("log_file_path:")
+    print(log_file_path)
+    log_training = open(log_file_path, 'w')
+    
     for epoch in range(args.start_epoch, args.epochs):
         adjust_learning_rate(optimizer, epoch, args.lr_steps)
 
@@ -139,7 +144,7 @@ def main():
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'best_prec1': best_prec1,
-            }, is_best)
+            }, is_best, time)
 
 
 def train(train_loader, model, criterion, optimizer, epoch, log):
@@ -261,10 +266,14 @@ def validate(val_loader, model, criterion, iter, log):
     return top1.avg
 
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
-    torch.save(state, '%s/%s_checkpoint.pth.tar' % (args.root_model, args.store_name))
+def save_checkpoint(state, is_best, time, filename='checkpoint.pth.tar'):
+    checkpoint_file_path = str(args.root_model) + "/" + time + '_%s_checkpoint.pth.tar' % (args.store_name)
+    print("checkpoint_file_path:")
+    print(checkpoint_file_path)
+    torch.save(state, checkpoint_file_path)
     if is_best:
-        shutil.copyfile('%s/%s_checkpoint.pth.tar' % (args.root_model, args.store_name),'%s/%s_best.pth.tar' % (args.root_model, args.store_name))
+        best_checkpoint_file_path = str(args.root_model) + "/" + time + '_%s_best.pth.tar' % (args.store_name)
+        shutil.copyfile(checkpoint_file_path, best_checkpoint_file_path)
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
