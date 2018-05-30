@@ -1,7 +1,10 @@
 import argparse
+import re
 import os
 import time
 import shutil
+import subprocess
+import sys
 import torch
 import torchvision
 import torch.nn.parallel
@@ -120,11 +123,36 @@ def main():
         validate(val_loader, model, criterion, 0)
         return
 
+    git_log_output = subprocess.run(
+        ['git', 'log', '-n1', '--pretty=format:commit: %h%nauthor: %an%n%s%n%b'],
+        stdout=subprocess.PIPE).stdout.decode('utf-8').split('\n')
+    git_diff_output = subprocess.run(['git', 'diff'],
+        stdout=subprocess.PIPE).stdout.decode('utf-8')
+
+    if args.exp_name == '':
+        exp_name_match = re.match(r'experiment: *(.+)', git_log_output[2])
+        if exp_name_match is None:
+            print(
+                'Experiment name required:\n'
+                '  current commit subject does not specify an experiment, and\n'
+                '  --experiment_name was not specified')
+            sys.exit(0)
+        args.exp_name = exp_name_match.group(1)
+    print(f'experiment name: {args.exp_name}')
+
     time = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
-    log_file_path = os.path.join(args.root_log, time + "_" + '%s.csv' % args.store_name)
+    exp_dir_path = os.path.join(args.root_log, args.exp_name, time)
+    log_file_path = os.path.join(exp_dir_path, f'{args.store_name}.csv')
     print("log_file_path:")
     print(log_file_path)
+    os.makedirs(exp_dir_path)
     log_training = open(log_file_path, 'w')
+    # store information about git status
+    git_info_path = os.path.join(exp_dir_path, 'experiment_info.txt')
+    with open(git_info_path, 'w') as f:
+        f.write('\n'.join(git_log_output))
+        f.write('\n\n' + ('=' * 80) + '\n')
+        f.write(git_diff_output)
     
     for epoch in range(args.start_epoch, args.epochs):
         adjust_learning_rate(optimizer, epoch, args.lr_steps)
