@@ -49,12 +49,14 @@ def return_charades(modality):
     return filename_categories, filename_imglist_train, filename_imglist_val, root_data, prefix
 
 def return_moments(modality):
-    filename_categories = '/data/vision/oliva/scratch/moments/split/categoryList_nov17.csv'
+    filename_categories = '/home/shared/Moments_in_Time_Mini_Stream/moments_categories.txt'
     if modality == 'RGB':
-        prefix = '{:06d}.jpg'
-        root_data = '/data/vision/oliva/scratch/moments/moments_nov17_frames'
-        filename_imglist_train = '/data/vision/oliva/scratch/moments/split/rgb_trainingSet_nov17.csv'
-        filename_imglist_val = '/data/vision/oliva/scratch/moments/split/rgb_validationSet_nov17.csv'
+        prefix = '{:05d}.jpg'
+        root_data = '/home/shared/Moments_in_Time_Mini_Stream/' #/data/vision/oliva/scratch/moments/moments_nov17_frames'
+        filename_imglist_train = '/home/shared/Moments_in_Time_Mini_Stream/training_frames_nano.txt' 
+#'/home/shared/Moments_in_Time_Mini_Stream/training_frames.txt' #/data/vision/oliva/scratch/moments/split/rgb_trainingSet_nov17.csv'
+        filename_imglist_val = '/home/shared/Moments_in_Time_Mini_Stream/validation_frames_nano.txt'
+# '/home/shared/Moments_in_Time_Mini_Stream/validation_frames.txt' #/data/vision/oliva/scratch/moments/split/rgb_validationSet_nov17.csv'
 
     elif modality == 'Flow':
         root_data = '/data/vision/oliva/scratch/moments/moments_nov17_flow'
