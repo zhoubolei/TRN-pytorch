@@ -100,7 +100,7 @@ class RelationModuleMultiScaleWithClassifier(torch.nn.Module):
             self.subsample_scales.append(min(self.subsample_num, len(relations_scale))) # how many samples of relation to select in each forward pass
 
         self.num_class = num_class
-        self.num_frames = num_frames_total
+        self.num_frames = num_frames
         num_bottleneck = 256
         self.fc_fusion_scales = nn.ModuleList() # high-tech modulelist
         self.classifier_scales = nn.ModuleList()
