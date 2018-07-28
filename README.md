@@ -62,7 +62,8 @@ cd sample_data
 ```
 
 The sample video is the following 
-![result](http://relation.csail.mit.edu/data/bolei_juggling.gif): Bolei is juggling:) 
+
+![result](http://relation.csail.mit.edu/data/bolei_juggling.gif) 
 
 * Test pretrained model trained on Something-Something
 
@@ -115,13 +116,13 @@ The command above uses `ffmpeg` to extract frames from the supplied video `--vid
 * TODO: class-aware data augmentation
 
 ### Reference:
-B. Zhou, A. Andonian, and A. Torralba. Temporal Relational Reasoning in Videos. arXiv:1711.08496, 2017. [PDF](https://arxiv.org/pdf/1711.08496.pdf)
+B. Zhou, A. Andonian, and A. Torralba. Temporal Relational Reasoning in Videos. European Conference on Computer Vision (ECCV), 2018. [PDF](https://arxiv.org/pdf/1711.08496.pdf)
 ```
 @article{zhou2017temporalrelation,
     title = {Temporal Relational Reasoning in Videos},
-    author = {Zhou, Bolei and Andonian, Alex and Torralba, Antonio},
-    journal={arXiv:1711.08496},
-    year={2017}
+    author = {Zhou, Bolei and Andonian, Alex and Oliva, Aude and Torralba, Antonio},
+    journal={European Conference on Computer Vision},
+    year={2018}
 }
 ```
 

@@ -17,7 +17,7 @@ from torch.nn import functional as F
 # options
 parser = argparse.ArgumentParser(
     description="TRN testing on the full validation set")
-parser.add_argument('dataset', type=str, choices=['something','jester','moments','charades'])
+parser.add_argument('dataset', type=str, choices=['somethingv2', 'something','jester','moments','charades'])
 parser.add_argument('modality', type=str, choices=['RGB', 'Flow', 'RGBDiff'])
 parser.add_argument('weights', type=str)
 parser.add_argument('--arch', type=str, default="resnet101")
@@ -34,6 +34,7 @@ parser.add_argument('--gpus', nargs='+', type=int, default=None)
 parser.add_argument('--img_feature_dim',type=int, default=256)
 parser.add_argument('--num_set_segments',type=int, default=1,help='TODO: select multiply set of n-frames from a video')
 parser.add_argument('--softmax', type=int, default=0)
+parser.add_argument('--test_set', type=int, default=0, help='evaluate on the test set')
 
 args = parser.parse_args()
 
@@ -71,6 +72,9 @@ def accuracy(output, target, topk=(1,)):
 
 categories, args.train_list, args.val_list, args.root_path, prefix = datasets_video.return_dataset(args.dataset, args.modality)
 num_class = len(categories)
+if args.test_set == 1:
+    print('evaluating the trained model on test set. No groundtruth is available for the test split, please upload to the server')
+    args.val_list = args.val_list.replace('val','test')
 
 net = TSN(num_class, args.test_segments if args.crop_fusion_type in ['TRN','TRNmultiscale'] else 1, args.modality,
           base_model=args.arch,
@@ -177,7 +181,7 @@ for i, (data, label) in data_gen:
                                                                     float(cnt_time) / (i+1), top1.avg, top5.avg))
 
 video_pred = [np.argmax(np.mean(x[0], axis=0)) for x in output]
-
+video_scores = [np.mean(x[0], axis=0) for x in output]
 video_labels = [x[1] for x in output]
 
 
@@ -189,6 +193,7 @@ cls_hit = np.diag(cf)
 cls_acc = cls_hit / cls_cnt
 
 print('-----Evaluation is finished------')
+print(args.weights)
 print('Class Accuracy {:.02f}%'.format(np.mean(cls_acc) * 100))
 print('Overall Prec@1 {:.02f}% Prec@5 {:.02f}%'.format(top1.avg, top5.avg))
 
@@ -196,19 +201,19 @@ if args.save_scores is not None:
 
     # reorder before saving
     name_list = [x.strip().split()[0] for x in open(args.val_list)]
-    order_dict = {e:i for i, e in enumerate(sorted(name_list))}
-    reorder_output = [None] * len(output)
-    reorder_label = [None] * len(output)
-    reorder_pred = [None] * len(output)
+    #order_dict = {e:i for i, e in enumerate(sorted(name_list))}
+    #reorder_output = [None] * len(output)
+    #reorder_label = [None] * len(output)
+    #reorder_pred = [None] * len(output)
     output_csv = []
     for i in range(len(output)):
-        idx = order_dict[name_list[i]]
-        reorder_output[idx] = output[i]
-        reorder_label[idx] = video_labels[i]
-        reorder_pred[idx] = video_pred[i]
+        #idx = order_dict[name_list[i]]
+        #reorder_output[idx] = video_scores[i] #output[i]
+        #reorder_label[idx] = video_labels[i]
+        #reorder_pred[idx] = video_pred[i]
         output_csv.append('%s;%s'%(name_list[i], categories[video_pred[i]]))
 
-    np.savez(args.save_scores, scores=reorder_output, labels=reorder_label, predictions=reorder_pred, cf=cf)
+    np.savez(args.save_scores, top1=top1.avg, top5=top5.avg, cls_acc=cls_acc, scores=video_scores, labels=video_labels, predictions=video_pred, categories=categories, cf=cf)
 
     with open(args.save_scores.replace('npz','csv'),'w') as f:
         f.write('\n'.join(output_csv))

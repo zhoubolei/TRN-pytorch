@@ -85,10 +85,13 @@ class TSNDataSet(data.Dataset):
         :param record: VideoRecord
         :return: list
         """
-
-        average_duration = (record.num_frames - self.new_length + 1) // self.num_segments
+        # fix the integer issue
+        #average_duration = (record.num_frames - self.new_length + 1) // self.num_segments
+        average_duration = (record.num_frames - self.new_length + 1) * 1.0 / self.num_segments
         if average_duration > 0:
-            offsets = np.multiply(list(range(self.num_segments)), average_duration) + randint(average_duration, size=self.num_segments)
+            #offsets = np.multiply(list(range(self.num_segments)), average_duration) + randint(average_duration, size=self.num_segments)
+            offsets = np.multiply(list(range(self.num_segments)), average_duration) + np.random.uniform(0, average_duration, size=self.num_segments)
+            offsets = np.floor(offsets)
         elif record.num_frames > self.num_segments:
             offsets = np.sort(randint(record.num_frames - self.new_length + 1, size=self.num_segments))
         else:
@@ -97,7 +100,8 @@ class TSNDataSet(data.Dataset):
 
     def _get_val_indices(self, record):
         if record.num_frames > self.num_segments + self.new_length - 1:
-            tick = (record.num_frames - self.new_length + 1) / float(self.num_segments)
+           # tick = (record.num_frames - self.new_length + 1) / float(self.num_segments)
+            tick = (record.num_frames - self.new_length + 1) * 1.0 / self.num_segments
             offsets = np.array([int(tick / 2.0 + tick * x) for x in range(self.num_segments)])
         else:
             offsets = np.zeros((self.num_segments,))
@@ -105,8 +109,8 @@ class TSNDataSet(data.Dataset):
 
     def _get_test_indices(self, record):
 
-        tick = (record.num_frames - self.new_length + 1) / float(self.num_segments)
-
+       # tick = (record.num_frames - self.new_length + 1) / float(self.num_segments)
+        tick = (record.num_frames - self.new_length + 1) * 1.0 / self.num_segments
         offsets = np.array([int(tick / 2.0 + tick * x) for x in range(self.num_segments)])
 
         return offsets + 1

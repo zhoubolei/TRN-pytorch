@@ -28,7 +28,6 @@ def main():
 
 
     args.store_name = '_'.join(['TRN', args.dataset, args.modality, args.arch, args.consensus_type, 'segment%d'% args.num_segments])
-    print('storing name: ' + args.store_name)
 
     model = TSN(num_class, args.num_segments, args.modality,
                 base_model=args.arch,
@@ -44,6 +43,16 @@ def main():
     policies = model.get_optim_policies()
     train_augmentation = model.get_augmentation()
 
+    # ECCV experiment to combine train and val
+    if args.trainval == 1:
+        args.store_name += '_trainval'
+        if args.modality == 'Flow':
+            args.epochs = 240
+        else:
+            args.epochs = 76
+        print('start training on the trainval for %d epochs'% args.epochs)
+        args.train_list = args.train_list.replace('train','trainval')
+    print('storing name: ' + args.store_name)
     model = torch.nn.DataParallel(model, device_ids=args.gpus).cuda()
 
     if args.resume:
