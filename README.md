@@ -2,6 +2,8 @@
 
 We release the code of the [Temporal Relation Networks](http://relation.csail.mit.edu/), built on top of the [TSN-pytorch codebase](https://github.com/yjxiong/temporal-segment-networks).
 
+**NEW (July 29, 2018)**: This work is accepted to ECCV'18, check the [paper](https://arxiv.org/pdf/1711.08496.pdf) for the latest result. We also release the state of the art model trained on the Something-Something V2, see following instruction.
+
 **Note**: always use `git clone --recursive https://github.com/metalbubble/TRN-pytorch` to clone this project
 Otherwise you will not be able to use the inception series CNN architecture.
 
