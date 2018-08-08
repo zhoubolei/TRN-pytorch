@@ -2,13 +2,17 @@
 
 We release the code of the [Temporal Relation Networks](http://relation.csail.mit.edu/), built on top of the [TSN-pytorch codebase](https://github.com/yjxiong/temporal-segment-networks).
 
+**NEW (July 29, 2018)**: This work is accepted to ECCV'18, check the [paper](https://arxiv.org/pdf/1711.08496.pdf) for the latest result. We also release the state of the art model trained on the Something-Something V2, see following instruction.
+
 **Note**: always use `git clone --recursive https://github.com/metalbubble/TRN-pytorch` to clone this project
 Otherwise you will not be able to use the inception series CNN architecture.
 
 ![framework](http://relation.csail.mit.edu/framework_trn.png)
 
 ### Data preparation
-Download the [something-something dataset](https://www.twentybn.com/datasets/something-something) or [jester dataset](https://www.twentybn.com/datasets/something-something) or [charades dataset](http://allenai.org/plato/charades/). Decompress them into some folder. Use [process_dataset.py](process_dataset.py) to generate the index files for train, val, and test split. Finally properly set up the train, validatin, and category meta files in [datasets_video.py](datasets_video.py).
+Download the [something-something dataset](https://www.twentybn.com/datasets/something-something/v1) or [jester dataset](https://www.twentybn.com/datasets/something-something) or [charades dataset](http://allenai.org/plato/charades/). Decompress them into some folder. Use [process_dataset.py](process_dataset.py) to generate the index files for train, val, and test split. Finally properly set up the train, validation, and category meta files in [datasets_video.py](datasets_video.py).
+
+For [Something-Something-V2](https://www.twentybn.com/datasets/something-something), we provide a utilty script [extract_frames.py](https://github.com/metalbubble/TRN-pytorch/blob/master/extract_frames.py) for converting the downloaded `.webm` videos into directories containing extracted frames. Additionally, the corresponding optic flow images can be downloaded from [here](http://relation.csail.mit.edu/data/20bn-something-something-v2-flow.tar.gz).
 
 ### Code
 
@@ -47,7 +51,7 @@ python test_models.py something RGB model/TRN_something_RGB_BNInception_TRNmulti
 
 ### Pretrained models and demo code
 
-* Download pretrained models on [Something-Something](https://www.twentybn.com/datasets/something-something), [Jester](https://www.twentybn.com/datasets/jester), and [Moments in Time](http://moments.csail.mit.edu/)
+* Download pretrained models on [Something-Something](https://20bn.com/datasets/something-something/v1), [Something-Something-V2](https://www.twentybn.com/datasets/something-something), [Jester](https://www.twentybn.com/datasets/jester), and [Moments in Time](http://moments.csail.mit.edu/)
 
 ```bash
 cd pretrain
@@ -61,22 +65,23 @@ cd sample_data
 ./download_sample_data.sh
 ```
 
-The sample video is the following 
-![result](http://relation.csail.mit.edu/data/bolei_juggling.gif): Bolei is juggling:) 
+The sample video is the following
 
-* Test pretrained model trained on Something-Something
+![result](http://relation.csail.mit.edu/data/bolei_juggling.gif)
+
+* Test pretrained model trained on Something-Something-V2
 
 ```bash
 python test_video.py --arch BNInception --dataset something \
-    --weight pretrain/TRN_something_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar \
+    --weight pretrain/TRN_somethingv2_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar \
     --frame_folder sample_data/bolei_juggling
 
 RESULT ON sample_data/bolei_juggling
-0.244 -> Throwing something in the air and catching it
-0.186 -> Throwing something in the air and letting it fall
-0.094 -> Showing a photo of something to the camera
-0.063 -> Hitting something with something
-0.040 -> Holding something in front of something
+0.500 -> Throwing something in the air and catching it
+0.141 -> Throwing something in the air and letting it fall
+0.072 -> Pretending to throw something
+0.024 -> Throwing something
+0.024 -> Hitting something with something
 
 ```
 
@@ -102,7 +107,7 @@ RESULT ON sample_data/bolei_juggling
 ```bash
 python test_video.py --arch InceptionV3 --dataset moments \
     --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar \
-    --video_file sample_data/bolei_juggling.mp4 --rendered_output sample_data/predicted_video.mp4 
+    --video_file sample_data/bolei_juggling.mp4 --rendered_output sample_data/predicted_video.mp4
 ```
 
 The command above uses `ffmpeg` to extract frames from the supplied video `--video_file` and optionally generates a new video `--rendered_output` from the frames used to make the prediction with the predicted category in the top-left corner.
@@ -115,13 +120,13 @@ The command above uses `ffmpeg` to extract frames from the supplied video `--vid
 * TODO: class-aware data augmentation
 
 ### Reference:
-B. Zhou, A. Andonian, and A. Torralba. Temporal Relational Reasoning in Videos. arXiv:1711.08496, 2017. [PDF](https://arxiv.org/pdf/1711.08496.pdf)
+B. Zhou, A. Andonian, and A. Torralba. Temporal Relational Reasoning in Videos. European Conference on Computer Vision (ECCV), 2018. [PDF](https://arxiv.org/pdf/1711.08496.pdf)
 ```
 @article{zhou2017temporalrelation,
     title = {Temporal Relational Reasoning in Videos},
-    author = {Zhou, Bolei and Andonian, Alex and Torralba, Antonio},
-    journal={arXiv:1711.08496},
-    year={2017}
+    author = {Zhou, Bolei and Andonian, Alex and Oliva, Aude and Torralba, Antonio},
+    journal={European Conference on Computer Vision},
+    year={2018}
 }
 ```
 
