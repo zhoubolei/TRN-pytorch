@@ -72,7 +72,7 @@ The sample video is the following
 * Test pretrained model trained on Something-Something-V2
 
 ```bash
-python test_video.py --arch BNInception --dataset something \
+python test_video.py --arch BNInception --dataset somethingv2 \
     --weight pretrain/TRN_somethingv2_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar \
     --frame_folder sample_data/bolei_juggling
 
