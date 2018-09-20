@@ -1,4 +1,4 @@
 [submodule "model_zoo"]
 	path = model_zoo
-	url = https://github.com/yjxiong/tensorflow-model-zoo.torch
+	url = https://github.com/Giphy/tensorflow-model-zoo.torch
     branch = tsn-pytorch
