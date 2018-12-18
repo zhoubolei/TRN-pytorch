@@ -1,4 +1,5 @@
 import argparse
+from multiprocessing import cpu_count
 parser = argparse.ArgumentParser(description="PyTorch implementation of Temporal Segment Networks")
 parser.add_argument('dataset', type=str, choices=['something','jester','moments'])
 parser.add_argument('modality', type=str, choices=['RGB', 'Flow'])
@@ -43,8 +44,8 @@ parser.add_argument('--eval-freq', '-ef', default=5, type=int,
 
 
 # ========================= Runtime Configs ==========================
-parser.add_argument('-j', '--workers', default=30, type=int, metavar='N',
-                    help='number of data loading workers (default: 4)')
+parser.add_argument('-j', '--workers', default=cpu_count(), type=int, metavar='N',
+                    help='number of data loading workers (default: n_cpus)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
@@ -57,6 +58,3 @@ parser.add_argument('--flow_prefix', default="", type=str)
 parser.add_argument('--root_log',type=str, default='log')
 parser.add_argument('--root_model', type=str, default='model')
 parser.add_argument('--root_output',type=str, default='output')
-
-
-

@@ -5,6 +5,7 @@ import numpy as np
 import torch.nn.parallel
 import torch.optim
 from sklearn.metrics import confusion_matrix
+from multiprocessing import cpu_count
 from dataset import TSNDataSet
 from models import TSN
 from transforms import *
@@ -28,7 +29,7 @@ parser.add_argument('--test_crops', type=int, default=10)
 parser.add_argument('--input_size', type=int, default=224)
 parser.add_argument('--crop_fusion_type', type=str, default='TRN',
                     choices=['avg', 'TRN','TRNmultiscale'])
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=cpu_count(), type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--gpus', nargs='+', type=int, default=None)
 parser.add_argument('--img_feature_dim',type=int, default=256)
