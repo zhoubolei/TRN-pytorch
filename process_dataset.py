@@ -9,7 +9,8 @@
 #
 import os
 import pdb
-dataset_name = 'something-something-v1' # 'jester-v1'
+#dataset_name = 'something-something-v1'
+dataset_name = 'jester-v1'
 with open('%s-labels.csv'% dataset_name) as f:
     lines = f.readlines()
 categories = []
@@ -35,7 +36,7 @@ for (filename_input, filename_output) in zip(files_input, files_output):
         line = line.rstrip()
         items = line.split(';')
         folders.append(items[0])
-        idx_categories.append(os.path.join(dict_categories[items[1]]))
+        idx_categories.append(dict_categories[items[1]])
     output = []
     for i in range(len(folders)):
         curFolder = folders[i]
