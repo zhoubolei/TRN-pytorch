@@ -4,7 +4,7 @@ import torchvision
 import torchvision.datasets as datasets
 
 
-ROOT_DATASET = 'video_datasets'
+ROOT_DATASET = 'datasets'
 
 
 class ModalityError(Exception):
@@ -41,7 +41,7 @@ def return_somethingv2(modality):
 
 
 def return_jester(modality):
-    dataset_root = 'datasets/jester/'
+    dataset_root = 'jester/'
     prefix = '{:05d}.jpg'
     filename_categories = os.path.join(dataset_root, 'jester-v1-numeric-labels.txt')
     filename_imglist_train = os.path.join(dataset_root, 'jester-v1-train-filelist.txt')
@@ -100,5 +100,6 @@ def return_dataset(args):
     file_categories = os.path.join(ROOT_DATASET, file_categories)
     with open(file_categories) as f:
         lines = f.readlines()
+
     categories = [item.rstrip() for item in lines]
     return categories, file_imglist_train, file_imglist_val, root_data, prefix
