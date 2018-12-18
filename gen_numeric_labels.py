@@ -11,6 +11,8 @@ parser.add_argument("labels_csv", type=Path, help="Path to labels CSV file, "
                                                   "e.g. something-something-v1-labels.csv")
 parser.add_argument("numeric_labels_csv", type=Path, help="Path to output CSV containing mapping between "
                                                           "named categories and their numeric labels")
+parser.add_argument("--output-categories-txt", type=Path,
+                    help="Write out categories.txt for TRN-pytorch")
 
 
 def read_labels(labels_path: Path) -> pd.DataFrame:
@@ -28,6 +30,10 @@ def main(args):
     labels = read_labels(labels_path)
     labels.set_index('name', inplace=True)
     labels.to_csv(args.numeric_labels_csv)
+    if args.output_categories_txt is not None:
+        with args.output_categories_txt.open('w', encoding='utf8') as f:
+            for category in labels.index.values:
+                f.write("{}\n".format(category))
 
 
 if __name__ == '__main__':
