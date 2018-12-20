@@ -6,6 +6,7 @@ from torch.nn.init import normal_, constant_
 
 import TRNmodule
 
+
 class TSN(nn.Module):
     def __init__(self, num_class, num_segments, modality,
                  base_model='resnet101', new_length=None,

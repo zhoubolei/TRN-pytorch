@@ -10,21 +10,31 @@ from dataset import TSNDataSet
 from models import TSN
 from transforms import *
 from opts import parser
-import datasets_video
 
 
 best_prec1 = 0
+
+
+def read_categories(categories_path):
+    with open(categories_path) as f:
+        lines = f.readlines()
+
+    categories = [item.rstrip() for item in lines]
+    return categories
+
 
 def main():
     global args, best_prec1
     args = parser.parse_args()
     check_rootfolders()
 
-    categories, args.train_list, args.val_list, args.root_path, prefix = datasets_video.return_dataset(args)
+    categories = read_categories(args.categories)
+    prefix = args.image_prefix
     num_class = len(categories)
 
-    args.store_name = '_'.join(['TRN', args.dataset, args.modality, args.arch, args.consensus_type, 'segment%d'% args.num_segments])
-    print('storing name: ' + args.store_name)
+    if args.store_name is None:
+        args.store_name = '_'.join(['TRN', args.dataset, args.modality, args.arch, args.consensus_type, 'segment%d'% args.num_segments])
+        print('Set store_name: ' + args.store_name)
 
     model = TSN(num_class, args.num_segments, args.modality,
                 base_model=args.arch,
@@ -40,7 +50,7 @@ def main():
     policies = model.get_optim_policies()
     train_augmentation = model.get_augmentation()
 
-    model = torch.nn.DataParallel(model, device_ids=args.gpus).cuda()
+    model = torch.nn.DataParallel(model).cuda()
 
     if args.resume:
         if os.path.isfile(args.resume):
@@ -112,11 +122,12 @@ def main():
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
+    log_training = open(os.path.join(args.root_log, '%s.csv' % args.store_name), 'w')
+
     if args.evaluate:
-        validate(val_loader, model, criterion, 0)
+        validate(val_loader, model, criterion, 0, log_training)
         return
 
-    log_training = open(os.path.join(args.root_log, '%s.csv' % args.store_name), 'w')
     for epoch in range(args.start_epoch, args.epochs):
         adjust_learning_rate(optimizer, epoch, args.lr_steps)
 
@@ -203,7 +214,6 @@ def train(train_loader, model, criterion, optimizer, epoch, log):
             log.flush()
 
 
-
 def validate(val_loader, model, criterion, iter, log):
     batch_time = AverageMeter()
     losses = AverageMeter()
@@ -257,10 +267,11 @@ def validate(val_loader, model, criterion, iter, log):
     return top1.avg
 
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best):
     torch.save(state, '%s/%s_checkpoint.pth.tar' % (args.root_model, args.store_name))
     if is_best:
         shutil.copyfile('%s/%s_checkpoint.pth.tar' % (args.root_model, args.store_name),'%s/%s_best.pth.tar' % (args.root_model, args.store_name))
+
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -304,6 +315,7 @@ def accuracy(output, target, topk=(1,)):
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
+
 
 def check_rootfolders():
     """Create log and model folder"""

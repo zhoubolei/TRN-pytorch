@@ -1,2 +1,14 @@
 #!/usr/bin/env bash
-python main.py jester RGB --arch BNInception --num_segments 3 --consensus_type TRN --batch-size 64
+#SBATCH -t 1-00:00:00
+#SBATCH --gres gpu:1
+#SBATCH -p small
+#SBATCH -c 5
+set -ex
+
+
+nvidia-smi
+env | sort
+python main.py jester RGB \
+    -c configs/jester-v1.ini \
+    --workers $(($(nproc) / 2)) \
+    "$@"

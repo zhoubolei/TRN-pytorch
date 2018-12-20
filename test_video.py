@@ -4,19 +4,15 @@
 
 import os
 import re
+
+import configargparse
 import cv2
-import argparse
 import functools
 import subprocess
-import numpy as np
-from PIL import Image
 import moviepy.editor as mpy
 
-import torch.nn.parallel
-import torch.optim
 from models import TSN
 from transforms import *
-import datasets_video
 from torch.nn import functional as F
 
 
@@ -71,20 +67,23 @@ def render_frames(frames, prediction):
 
 
 # options
-parser = argparse.ArgumentParser(description="test TRN on a single video")
+parser = configargparse.ArgumentParser(
+        description="test TRN on a single video",
+        formatter_class=configargparse.ArgumentDefaultsHelpFormatter
+)
 group = parser.add_mutually_exclusive_group(required=True)
-group.add_argument('--video_file', type=str, default=None)
-group.add_argument('--frame_folder', type=str, default=None)
+group.add_argument('--video-file', type=str)
+group.add_argument('--frame-folder', type=str)
 parser.add_argument('--modality', type=str, default='RGB',
-                    choices=['RGB', 'Flow', 'RGBDiff'], )
+                    choices=['RGB', 'Flow', 'RGBDiff'])
 parser.add_argument('--dataset', type=str, default='moments',
                     choices=['something', 'jester', 'moments'])
-parser.add_argument('--rendered_output', type=str, default=None)
+parser.add_argument('--rendered-output', type=str)
 parser.add_argument('--arch', type=str, default="InceptionV3")
-parser.add_argument('--input_size', type=int, default=224)
-parser.add_argument('--test_segments', type=int, default=8)
-parser.add_argument('--img_feature_dim', type=int, default=256)
-parser.add_argument('--consensus_type', type=str, default='TRNmultiscale')
+parser.add_argument('--input-size', type=int, default=224)
+parser.add_argument('--test-segments', type=int, default=8)
+parser.add_argument('--img-feature-dim', type=int, default=256)
+parser.add_argument('--consensus-type', type=str, default='TRNmultiscale')
 parser.add_argument('--weight', type=str)
 
 args = parser.parse_args()
