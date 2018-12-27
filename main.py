@@ -15,8 +15,11 @@ from transforms import *
 from opts import parser
 import datasets_video
 
+from tensorboardX import SummaryWriter
 
 best_prec1 = 0
+
+summary_writer = SummaryWriter(log_dir='logs')
 
 def main():
     global args, best_prec1
@@ -36,6 +39,10 @@ def main():
                 dropout=args.dropout,
                 img_feature_dim=args.img_feature_dim,
                 partial_bn=not args.no_partialbn)
+    
+#     checkpoint = torch.load('/home/ec2-user/mit_weights.pth.tar')
+#     base_dict = {'.'.join(k.split('.')[1:]): v for k, v in list(checkpoint['state_dict'].items())}
+#     net.load_state_dict(base_dict)
 
     crop_size = model.crop_size
     scale_size = model.scale_size
@@ -129,7 +136,7 @@ def main():
 
         # evaluate on validation set
         if (epoch + 1) % args.eval_freq == 0 or epoch == args.epochs - 1:
-            prec1 = validate(val_loader, model, criterion, (epoch + 1) * len(train_loader), log_training)
+            prec1 = validate(val_loader, model, criterion, (epoch + 1) * len(train_loader), log_training, epoch)
 
             # remember best prec@1 and save checkpoint
             is_best = prec1 > best_prec1
@@ -140,6 +147,7 @@ def main():
                 'state_dict': model.state_dict(),
                 'best_prec1': best_prec1,
             }, is_best)
+    summary_writer.close()
 
 
 def train(train_loader, model, criterion, optimizer, epoch, log):
@@ -162,7 +170,7 @@ def train(train_loader, model, criterion, optimizer, epoch, log):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        target = target.cuda(async=True)
+        target = target.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
@@ -194,6 +202,10 @@ def train(train_loader, model, criterion, optimizer, epoch, log):
         end = time.time()
 
         if i % args.print_freq == 0:
+            summary_writer.add_scalar('train_loss', losses.val, epoch * len(train_loader) + i)
+            summary_writer.add_scalar('train_top_1', top1.val, epoch * len(train_loader) + i)
+            summary_writer.add_scalar('train_top_5', top5.val, epoch * len(train_loader) + i)
+            
             output = ('Epoch: [{0}][{1}/{2}], lr: {lr:.5f}\t'
                     'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                     'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
@@ -208,7 +220,7 @@ def train(train_loader, model, criterion, optimizer, epoch, log):
 
 
 
-def validate(val_loader, model, criterion, iter, log):
+def validate(val_loader, model, criterion, iter, log, epoch=0):
     batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
@@ -219,7 +231,7 @@ def validate(val_loader, model, criterion, iter, log):
 
     end = time.time()
     for i, (input, target) in enumerate(val_loader):
-        target = target.cuda(async=True)
+        target = target.cuda()
         input_var = torch.autograd.Variable(input, volatile=True)
         target_var = torch.autograd.Variable(target, volatile=True)
 
@@ -249,6 +261,10 @@ def validate(val_loader, model, criterion, iter, log):
             print(output)
             log.write(output + '\n')
             log.flush()
+            
+    summary_writer.add_scalar('val_loss', losses.avg, epoch)
+    summary_writer.add_scalar('val_top_1', top1.avg, epoch)
+    summary_writer.add_scalar('val_top_5', top5.avg, epoch)
 
     output = ('Testing Results: Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f} Loss {loss.avg:.5f}'
           .format(top1=top1, top5=top5, loss=losses))
@@ -292,6 +308,7 @@ def adjust_learning_rate(optimizer, epoch, lr_steps):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr * param_group['lr_mult']
         param_group['weight_decay'] = decay * param_group['decay_mult']
+    summary_writer.add_scalar('learning_rate', optimizer.param_groups[-1]['lr'], epoch)
 
 
 def accuracy(output, target, topk=(1,)):

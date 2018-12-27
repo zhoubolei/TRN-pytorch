@@ -4,7 +4,20 @@ import torchvision
 import torchvision.datasets as datasets
 
 
-ROOT_DATASET = 'video_datasets'
+ROOT_DATASET = '/home/ec2-user/mnt/giphy_dataset'
+
+
+def return_custom(modality):
+    filename_categories = 'category.txt'
+    if modality == 'RGB':
+        root_data = '/home/ec2-user/mnt/giphy_dataset'
+        filename_imglist_train = 'train_videofolder.txt'
+        filename_imglist_val = 'val_videofolder.txt'
+        prefix = '{}.jpg'
+    else:
+        print('no such modality:'+modality)
+        os.exit()
+    return filename_categories, filename_imglist_train, filename_imglist_val, root_data, prefix
 
 
 def return_something(modality):
@@ -101,7 +114,7 @@ def return_moments(modality):
 
 def return_dataset(dataset, modality):
     dict_single = {'jester': return_jester, 'something': return_something, 'somethingv2': return_somethingv2,
-                   'charades': return_charades, 'moments': return_moments}
+                   'charades': return_charades, 'moments': return_moments, 'custom': return_custom}
     if dataset in dict_single:
         file_categories, file_imglist_train, file_imglist_val, root_data, prefix = dict_single[dataset](modality)
     else:

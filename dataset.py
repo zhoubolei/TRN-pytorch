@@ -68,7 +68,7 @@ class TSNDataSet(data.Dataset):
     def _parse_list(self):
         # check the frame number is large >3:
         # usualy it is [video_id, num_frames, class_idx]
-        tmp = [x.strip().split(' ') for x in open(self.list_file)]
+        tmp = [x.strip().split(',') for x in open(self.list_file)]
         tmp = [item for item in tmp if int(item[1])>=3]
         self.video_list = [VideoRecord(item) for item in tmp]
         print('video number:%d'%(len(self.video_list)))
@@ -87,7 +87,7 @@ class TSNDataSet(data.Dataset):
             offsets = np.sort(randint(record.num_frames - self.new_length + 1, size=self.num_segments))
         else:
             offsets = np.zeros((self.num_segments,))
-        return offsets + 1
+        return offsets
 
     def _get_val_indices(self, record):
         if record.num_frames > self.num_segments + self.new_length - 1:
@@ -95,7 +95,7 @@ class TSNDataSet(data.Dataset):
             offsets = np.array([int(tick / 2.0 + tick * x) for x in range(self.num_segments)])
         else:
             offsets = np.zeros((self.num_segments,))
-        return offsets + 1
+        return offsets
 
     def _get_test_indices(self, record):
 
@@ -103,7 +103,7 @@ class TSNDataSet(data.Dataset):
 
         offsets = np.array([int(tick / 2.0 + tick * x) for x in range(self.num_segments)])
 
-        return offsets + 1
+        return offsets
 
     def __getitem__(self, index):
         record = self.video_list[index]

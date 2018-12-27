@@ -1,6 +1,6 @@
 import argparse
 parser = argparse.ArgumentParser(description="PyTorch implementation of Temporal Segment Networks")
-parser.add_argument('dataset', type=str, choices=['something','jester','moments'])
+parser.add_argument('dataset', type=str, choices=['something','jester','moments','custom'])
 parser.add_argument('modality', type=str, choices=['RGB', 'Flow'])
 parser.add_argument('--train_list', type=str,default="")
 parser.add_argument('--val_list', type=str, default="")
@@ -23,7 +23,7 @@ parser.add_argument('--epochs', default=120, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('-b', '--batch-size', default=128, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
-parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
+parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--lr_steps', default=[50, 100], type=float, nargs="+",
                     metavar='LRSteps', help='epochs to decay learning rate by 10')
