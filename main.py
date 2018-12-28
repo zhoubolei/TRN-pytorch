@@ -8,6 +8,7 @@ import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim
 from torch.nn.utils import clip_grad_norm
+from torch import nn
 
 from dataset import TSNDataSet
 from models import TSN
@@ -21,6 +22,21 @@ best_prec1 = 0
 
 summary_writer = SummaryWriter(log_dir='logs')
 
+
+class ModifiedTRN(nn.Module):
+    def __init__(self, trn, num_classes):
+        super(ModifiedTRN, self).__init__()
+        self.trn = trn
+        self.new_fc = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(339, num_classes)
+        )
+    
+    def forward(self, input):
+        fc = self.trn(input)
+        return self.new_fc(fc)  
+        
+
 def main():
     global args, best_prec1
     args = parser.parse_args()
@@ -33,25 +49,28 @@ def main():
     args.store_name = '_'.join(['TRN', args.dataset, args.modality, args.arch, args.consensus_type, 'segment%d'% args.num_segments])
     print('storing name: ' + args.store_name)
 
-    model = TSN(num_class, args.num_segments, args.modality,
+    base_model = TSN(339, args.num_segments, args.modality,
                 base_model=args.arch,
                 consensus_type=args.consensus_type,
                 dropout=args.dropout,
                 img_feature_dim=args.img_feature_dim,
                 partial_bn=not args.no_partialbn)
+    base_model.train(False)
+    for p in base_model.parameters():
+        p.requires_grad = False
+
+    crop_size = base_model.crop_size
+    scale_size = base_model.scale_size
+    input_mean = base_model.input_mean
+    input_std = base_model.input_std
+    policies = base_model.get_optim_policies()
+    train_augmentation = base_model.get_augmentation()
+
+    base_model = torch.nn.DataParallel(base_model, device_ids=args.gpus).cuda()
     
-#     checkpoint = torch.load('/home/ec2-user/mit_weights.pth.tar')
-#     base_dict = {'.'.join(k.split('.')[1:]): v for k, v in list(checkpoint['state_dict'].items())}
-#     net.load_state_dict(base_dict)
-
-    crop_size = model.crop_size
-    scale_size = model.scale_size
-    input_mean = model.input_mean
-    input_std = model.input_std
-    policies = model.get_optim_policies()
-    train_augmentation = model.get_augmentation()
-
-    model = torch.nn.DataParallel(model, device_ids=args.gpus).cuda()
+    # remove if not transfer learning    
+    checkpoint = torch.load('/home/ec2-user/mit_weights.pth.tar')
+    base_model.load_state_dict(checkpoint['state_dict'])
 
     if args.resume:
         if os.path.isfile(args.resume):
@@ -59,11 +78,15 @@ def main():
             checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
             best_prec1 = checkpoint['best_prec1']
-            model.load_state_dict(checkpoint['state_dict'])
+            base_model.load_state_dict(checkpoint['state_dict'])
             print(("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.evaluate, checkpoint['epoch'])))
         else:
             print(("=> no checkpoint found at '{}'".format(args.resume)))
+    
+    model = ModifiedTRN(base_model, num_class)
+    model.cuda()
+    model.train(True)
 
     cudnn.benchmark = True
 
@@ -117,11 +140,12 @@ def main():
     for group in policies:
         print(('group: {} has {} params, lr_mult: {}, decay_mult: {}'.format(
             group['name'], len(group['params']), group['lr_mult'], group['decay_mult'])))
-
-    optimizer = torch.optim.SGD(policies,
-                                args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
+        
+    optimizer = torch.optim.Adam(model.parameters(), args.lr)
+#     optimizer = torch.optim.SGD(policies,
+#                                 args.lr,
+#                                 momentum=args.momentum,
+#                                 weight_decay=args.weight_decay)
 
     if args.evaluate:
         validate(val_loader, model, criterion, 0)
@@ -129,7 +153,7 @@ def main():
 
     log_training = open(os.path.join(args.root_log, '%s.csv' % args.store_name), 'w')
     for epoch in range(args.start_epoch, args.epochs):
-        adjust_learning_rate(optimizer, epoch, args.lr_steps)
+        # adjust_learning_rate(optimizer, epoch, args.lr_steps)
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, log_training)
@@ -158,9 +182,9 @@ def train(train_loader, model, criterion, optimizer, epoch, log):
     top5 = AverageMeter()
 
     if args.no_partialbn:
-        model.module.partialBN(False)
+        model.trn.module.partialBN(False)
     else:
-        model.module.partialBN(True)
+        model.trn.module.partialBN(True)
 
     # switch to train mode
     model.train()
