@@ -1,3 +1,6 @@
+import logging
+from pathlib import Path
+
 import configargparse
 from multiprocessing import cpu_count
 
@@ -10,10 +13,10 @@ parser.add_argument('-c', '--config-file', is_config_file=True,
 
 parser.add_argument("dataset", type=str, choices=["something", "jester", "moments"])
 parser.add_argument("modality", type=str, choices=["RGB", "Flow"])
-parser.add_argument("--train-list", type=str, required=True)
-parser.add_argument("--val-list", type=str, required=True)
-parser.add_argument("--categories", type=str, required=True)
-parser.add_argument("--root-path", type=str, required=True)
+parser.add_argument("--train-list", type=Path, required=True)
+parser.add_argument("--val-list", type=Path, required=True)
+parser.add_argument("--categories", type=Path, required=True)
+parser.add_argument("--root-path", type=Path, required=True)
 parser.add_argument("--image-prefix", type=str, default="{:05d}.jpg",
                     help="Python formatting string for JPEG files")
 parser.add_argument("--store-name", type=str)
@@ -116,7 +119,7 @@ parser.add_argument(
 parser.add_argument(
     "--resume",
     default="",
-    type=str,
+    type=Path,
     metavar="PATH",
     help="path to latest checkpoint (default: none)",
 )
@@ -136,6 +139,17 @@ parser.add_argument(
     help="manual epoch number (useful on restarts)",
 )
 parser.add_argument("--flow-prefix", default="", type=str)
-parser.add_argument("--root-log", type=str, default="log")
-parser.add_argument("--root-model", type=str, default="model")
-parser.add_argument("--root-output", type=str, default="output")
+parser.add_argument("--root-log", type=Path, default="log")
+parser.add_argument("--root-model", type=Path, default="model")
+parser.add_argument("--root-output", type=Path, default="output")
+parser.add_argument("-v", "--verbose", dest="verbosity", action="count", default=0,
+                    help="Verbosity (between 1-4 occurrences with more leading to more "
+                         "verbose logging). CRITICAL=0, ERROR=1, WARN=2, INFO=3, "
+                         "DEBUG=4")
+log_levels = {
+    0: logging.CRITICAL,
+    1: logging.ERROR,
+    2: logging.WARN,
+    3: logging.INFO,
+    4: logging.DEBUG,
+}

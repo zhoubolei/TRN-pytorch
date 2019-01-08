@@ -1,10 +1,16 @@
+import torchvision
 from torch import nn
+from torchvideo.transforms import MultiScaleCropVideo, RandomHorizontalFlipVideo
+from torchvision.transforms import Compose, RandomHorizontalFlip
 
 from ops.basic_ops import ConsensusModule
 from transforms import *
 from torch.nn.init import normal_, constant_
+from textwrap import dedent
 
 import TRNmodule
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 class TSN(nn.Module):
@@ -14,6 +20,7 @@ class TSN(nn.Module):
                  dropout=0.8,img_feature_dim=256,
                  crop_num=1, partial_bn=True, print_spec=True):
         super(TSN, self).__init__()
+        self.arch = base_model
         self.modality = modality
         self.num_segments = num_segments
         self.reshape = True
@@ -29,17 +36,16 @@ class TSN(nn.Module):
             self.new_length = 1 if modality == "RGB" else 5
         else:
             self.new_length = new_length
-        if print_spec == True:
-            print(("""
-    Initializing TSN with base model: {}.
-    TSN Configurations:
-        input_modality:     {}
-        num_segments:       {}
-        new_length:         {}
-        consensus_module:   {}
-        dropout_ratio:      {}
-        img_feature_dim:    {}
-            """.format(base_model, self.modality, self.num_segments, self.new_length, consensus_type, self.dropout, self.img_feature_dim)))
+        _LOG.info(dedent(f"""
+            Initializing TSN with base model: {base_model}.
+            TSN Configurations:
+                input_modality:     {self.modality}
+                num_segments:       {self.num_segments}
+                new_length:         {self.new_length}
+                consensus_module:   {consensus_type}
+                dropout_ratio:      {self.dropout}
+                img_feature_dim:    {self.img_feature_dim}
+        """))
 
         self._prepare_base_model(base_model)
 
@@ -110,7 +116,7 @@ class TSN(nn.Module):
             self.base_model.last_layer_name = 'last_linear'
             self.input_size = 224
             self.input_mean = [104, 117, 128]
-            self.input_std = [1]
+            self.input_std = [1, 1, 1]
 
             if self.modality == 'Flow':
                 self.input_mean = [128]
@@ -121,8 +127,8 @@ class TSN(nn.Module):
             self.base_model = getattr(model_zoo, base_model)()
             self.base_model.last_layer_name = 'top_cls_fc'
             self.input_size = 299
-            self.input_mean = [104,117,128]
-            self.input_std = [1]
+            self.input_mean = [104, 117, 128]
+            self.input_std = [1, 1, 1]
             if self.modality == 'Flow':
                 self.input_mean = [128]
             elif self.modality == 'RGBDiff':
@@ -146,7 +152,7 @@ class TSN(nn.Module):
         super(TSN, self).train(mode)
         count = 0
         if self._enable_pbn:
-            print("Freezing BatchNorm2D except the first one.")
+            _LOG.debug("Freezing BatchNorm2D except the first one.")
             for m in self.base_model.modules():
                 if isinstance(m, nn.BatchNorm2d):
                     count += 1
@@ -247,7 +253,6 @@ class TSN(nn.Module):
 
         return new_data
 
-
     def _construct_flow_model(self, base_model):
         # modify the convolution layers
         # Torch models are usually defined in a hierarchical way.
@@ -318,11 +323,11 @@ class TSN(nn.Module):
 
     def get_augmentation(self):
         if self.modality == 'RGB':
-            return torchvision.transforms.Compose([GroupMultiScaleCrop(self.input_size, [1, .875, .75, .66]),
-                                                   GroupRandomHorizontalFlip(is_flow=False)])
+            return Compose([MultiScaleCropVideo(self.input_size, scales=(1, .875, .75, .66)),
+                            RandomHorizontalFlipVideo()])
         elif self.modality == 'Flow':
-            return torchvision.transforms.Compose([GroupMultiScaleCrop(self.input_size, [1, .875, .75]),
-                                                   GroupRandomHorizontalFlip(is_flow=True)])
+            return Compose([MultiScaleCropVideo(self.input_size, scales=(1, .875, .75)),
+                            RandomHorizontalFlipVideo()])
         elif self.modality == 'RGBDiff':
-            return torchvision.transforms.Compose([GroupMultiScaleCrop(self.input_size, [1, .875, .75]),
-                                                   GroupRandomHorizontalFlip(is_flow=False)])
+            return Compose([MultiScaleCropVideo(self.input_size, scales=(1, .875, .75)),
+                            RandomHorizontalFlipVideo()])

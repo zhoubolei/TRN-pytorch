@@ -1,56 +1,54 @@
 import os
 import time
 import shutil
+from typing import Dict, Union
+from pathlib import Path
+
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim
+import torch.utils.data
+from ignite.contrib.handlers import ProgressBar
+from ignite.engine import _prepare_batch
+from ignite.handlers import ModelCheckpoint
 from torch.nn.utils import clip_grad_norm_
+from ignite.engine import Events, create_supervised_evaluator, Engine
+from ignite.metrics import Accuracy, Loss, TopKCategoricalAccuracy, Metric
+from torchvideo.datasets import GulpVideoDataset, ImageFolderVideoDataset
+from torchvideo.samplers import TemporalSegmentSampler
+from torchvideo.transforms import ResizeVideo, CenterCropVideo, CollectFrames, \
+    PILVideoToTensor, np, NormalizeVideo, TimeToChannel, NDArrayToPILVideo
+from torchvision.transforms import Compose
 
-from dataset import TSNDataSet
+from label_sets import FileListLabelSet, FileList
 from models import TSN
 from transforms import *
-from opts import parser
-
-
-best_prec1 = 0
-
-
-def read_categories(categories_path):
-    with open(categories_path) as f:
-        lines = f.readlines()
-
-    categories = [item.rstrip() for item in lines]
-    return categories
+from opts import parser, log_levels
+import logging
 
 
 def main():
     global args, best_prec1
     args = parser.parse_args()
+    logging.basicConfig(level=log_levels[args.verbosity])
     check_rootfolders()
 
     categories = read_categories(args.categories)
-    prefix = args.image_prefix
     num_class = len(categories)
 
+    modality = args.modality
+    num_segments = args.num_segments
+    arch = args.arch
     if args.store_name is None:
-        args.store_name = '_'.join(['TRN', args.dataset, args.modality, args.arch, args.consensus_type, 'segment%d'% args.num_segments])
+        args.store_name = '_'.join(['TRN', args.dataset, modality, arch, args.consensus_type, 'segment%d' % num_segments])
         print('Set store_name: ' + args.store_name)
 
-    model = TSN(num_class, args.num_segments, args.modality,
-                base_model=args.arch,
+    model = TSN(num_class, num_segments, modality,
+                base_model=arch,
                 consensus_type=args.consensus_type,
                 dropout=args.dropout,
                 img_feature_dim=args.img_feature_dim,
                 partial_bn=not args.no_partialbn)
-
-    crop_size = model.crop_size
-    scale_size = model.scale_size
-    input_mean = model.input_mean
-    input_std = model.input_std
-    policies = model.get_optim_policies()
-    train_augmentation = model.get_augmentation()
-
-    model = torch.nn.DataParallel(model).cuda()
 
     if args.resume:
         if os.path.isfile(args.resume):
@@ -66,127 +64,24 @@ def main():
 
     cudnn.benchmark = True
 
-    # Data loading code
-    if args.modality != 'RGBDiff':
-        normalize = GroupNormalize(input_mean, input_std)
-    else:
-        normalize = IdentityTransform()
+    train_loader, val_loader = get_dataloaders(model, args.root_path, args.train_list, args.val_list,
+                                               filename_prefix=args.image_prefix, batch_size=args.batch_size,
+                                               worker_count=args.workers)
+    criterion = get_criterion(args.loss_type)
+    optimizer = get_optimizer(model, args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
-    if args.modality == 'RGB':
-        data_length = 1
-    elif args.modality in ['Flow', 'RGBDiff']:
-        data_length = 5
+    device = get_device()
+    model = torch.nn.DataParallel(model)
+    model.to(device)
+    print("Train dataset size: {}".format(len(train_loader) * train_loader.batch_size))
+    print("Val dataset size: {}".format(len(val_loader) * val_loader.batch_size))
 
-    train_loader = torch.utils.data.DataLoader(
-        TSNDataSet(args.root_path, args.train_list, num_segments=args.num_segments,
-                   new_length=data_length,
-                   modality=args.modality,
-                   image_tmpl=prefix,
-                   transform=torchvision.transforms.Compose([
-                       train_augmentation,
-                       Stack(roll=(args.arch in ['BNInception','InceptionV3'])),
-                       ToTorchFormatTensor(div=(args.arch not in ['BNInception','InceptionV3'])),
-                       normalize,
-                   ])),
-        batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
-
-    val_loader = torch.utils.data.DataLoader(
-        TSNDataSet(args.root_path, args.val_list, num_segments=args.num_segments,
-                   new_length=data_length,
-                   modality=args.modality,
-                   image_tmpl=prefix,
-                   random_shift=False,
-                   transform=torchvision.transforms.Compose([
-                       GroupScale(int(scale_size)),
-                       GroupCenterCrop(crop_size),
-                       Stack(roll=(args.arch in ['BNInception','InceptionV3'])),
-                       ToTorchFormatTensor(div=(args.arch not in ['BNInception','InceptionV3'])),
-                       normalize,
-                   ])),
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
-
-    # define loss function (criterion) and optimizer
-    if args.loss_type == 'nll':
-        criterion = torch.nn.CrossEntropyLoss().cuda()
-    else:
-        raise ValueError("Unknown loss type")
-
-    for group in policies:
-        print(('group: {} has {} params, lr_mult: {}, decay_mult: {}'.format(
-            group['name'], len(group['params']), group['lr_mult'], group['decay_mult'])))
-
-    optimizer = torch.optim.SGD(policies,
-                                args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
-
-    log_training = open(os.path.join(args.root_log, '%s.csv' % args.store_name), 'w')
-
-    if args.evaluate:
-        validate(val_loader, model, criterion, 0, log_training)
-        return
-
-    for epoch in range(args.start_epoch, args.epochs):
-        adjust_learning_rate(optimizer, epoch, args.lr_steps)
-
-        # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, log_training)
-
-        # evaluate on validation set
-        if (epoch + 1) % args.eval_freq == 0 or epoch == args.epochs - 1:
-            prec1 = validate(val_loader, model, criterion, (epoch + 1) * len(train_loader), log_training)
-
-            # remember best prec@1 and save checkpoint
-            is_best = prec1 > best_prec1
-            best_prec1 = max(prec1, best_prec1)
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'arch': args.arch,
-                'state_dict': model.state_dict(),
-                'best_prec1': best_prec1,
-            }, is_best)
-
-
-def train(train_loader, model, criterion, optimizer, epoch, log):
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
-
-    if args.no_partialbn:
-        model.module.partialBN(False)
-    else:
-        model.module.partialBN(True)
-
-    # switch to train mode
-    model.train()
-
-    end = time.time()
-    for i, (input, target) in enumerate(train_loader):
-        # measure data loading time
-        data_time.update(time.time() - end)
-
-        target = target.cuda(async=True)
-        input_var = torch.autograd.Variable(input)
-        target_var = torch.autograd.Variable(target)
-
-        # compute output
-        output = model(input_var)
-        loss = criterion(output, target_var)
-
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1,5))
-        losses.update(loss.item(), input.size(0))
-        top1.update(prec1.item(), input.size(0))
-        top5.update(prec5.item(), input.size(0))
-
-
-        # compute gradient and do SGD step
+    def train_step(engine, batch):
+        model.train()
         optimizer.zero_grad()
-
+        x, y = _prepare_batch(batch, device=device, non_blocking=True)
+        y_pred = model(x)
+        loss = criterion(y_pred, y)
         loss.backward()
 
         if args.clip_gradient is not None:
@@ -195,76 +90,286 @@ def train(train_loader, model, criterion, optimizer, epoch, log):
                 print("clipping gradient: {} with coef {}".format(total_norm, args.clip_gradient / total_norm))
 
         optimizer.step()
+        return y_pred, y
 
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
+    trainer = Engine(train_step)
+    # It's important that the EngineTimer be attached first, otherwise
+    # invalid timings will be obtained due to other handlers excuting prior
+    # to this one.
+    EngineTimer(trainer)
 
-        if i % args.print_freq == 0:
-            output = ('Epoch: [{0}][{1}/{2}], lr: {lr:.5f}\t'
-                    'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                    'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                    'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                    'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                    'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                        epoch, i, len(train_loader), batch_time=batch_time,
-                        data_time=data_time, loss=losses, top1=top1, top5=top5, lr=optimizer.param_groups[-1]['lr']))
-            print(output)
-            log.write(output + '\n')
-            log.flush()
+    evaluator = create_supervised_evaluator(model, device=device)
+    EngineTimer(evaluator)
+
+    def get_metrics():
+        return {
+            'top-1 accuracy': Accuracy(),
+            'top-5 accuracy': TopKCategoricalAccuracy(k=5),
+            'loss': Loss(criterion)
+        }
+
+    def attach_metrics(metrics: Dict[str, Metric], engine: Engine):
+        for name, metric in metrics.items():
+            metric.attach(engine, name)
+
+            # By default metrics only attach their started/completed method to the
+            # EPOCH_STARTED, EPOCH_COMPLETED event. The completed method is what assigns
+            # the resulting metric to engine.state.metrics so we also want to add it
+            # after an iteration completion so that we can log running-metrics We also
+            # have to reset the metric which is what the metric.started method does, so
+            # we fire that on ITERATION_START.
+            # TODO: Look at using RunningAverage to replace this:
+            #   https://pytorch.org/ignite/metrics.html#ignite.metrics.RunningAverage
+            engine.add_event_handler(Events.ITERATION_STARTED, metric.started)
+            engine.add_event_handler(Events.ITERATION_COMPLETED, metric.completed, name)
+        return metrics
+
+    # Metrics must be attached after adjust_lr is attached so lr is available in
+    # state.metrics
+    train_metrics = attach_metrics(get_metrics(), trainer)
+    val_metrics = attach_metrics(get_metrics(), evaluator)
+
+    @trainer.on(Events.EPOCH_STARTED)
+    def adjust_lr(engine):
+        adjust_learning_rate(optimizer, engine.state.epoch, args.lr_steps)
+        engine.state.metrics['lr'] = optimizer.param_groups[-1]['lr']
+
+    # Attach after logging metrics
+    @trainer.on(Events.ITERATION_COMPLETED)
+    def log_training_stats(engine):
+        iteration = (engine.state.iteration - 1) % len(train_loader) + 1
+        if iteration % args.print_freq == 0:
+            log_metrics(engine, len(train_loader))
+
+    @trainer.on(Events.EPOCH_COMPLETED)
+    def evaluate_model(engine):
+        if (engine.state.epoch + 1) % args.eval_freq == 0 or \
+                engine.state.epoch + 1 == args.epochs:
+            evaluator.run(val_loader)
 
 
-def validate(val_loader, model, criterion, iter, log):
-    batch_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
+    pbar = ProgressBar()
+    pbar.attach(evaluator)
+    pbar.attach(trainer)
 
-    # switch to evaluate mode
-    model.eval()
+    checkpoint_handler = ModelCheckpoint(args.root_model, args.store_name, save_interval=1, n_saved=1,
+                                         require_empty=False, create_dir=True)
+    trainer.add_event_handler(Events.EPOCH_COMPLETED, handler=checkpoint_handler,
+                              to_save={'model': model})
 
-    end = time.time()
-    for i, (input, target) in enumerate(val_loader):
-        target = target.cuda(async=True)
-        input_var = torch.autograd.Variable(input, volatile=True)
-        target_var = torch.autograd.Variable(target, volatile=True)
+    @evaluator.on(Events.ITERATION_COMPLETED)
+    def log_val_stats(engine):
+        iteration = (engine.state.iteration - 1) % len(val_loader) + 1
+        if iteration % args.print_freq == 0:
+            log_metrics(engine, len(val_loader))
 
-        # compute output
-        output = model(input_var)
-        loss = criterion(output, target_var)
+    # TODO: Figure out how to set initial epoch count for resumed models
+    trainer.run(train_loader, max_epochs=args.epochs)
 
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1,5))
 
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+def get_device():
+    if torch.cuda.is_available():
+        return 'cuda'
+    return 'cpu'
 
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
 
-        if i % args.print_freq == 0:
-            output = ('Test: [{0}/{1}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   i, len(val_loader), batch_time=batch_time, loss=losses,
-                   top1=top1, top5=top5))
-            print(output)
-            log.write(output + '\n')
-            log.flush()
+def get_optimizer(model, lr, momentum=0.9, weight_decay=5e-4):
+    policies = model.get_optim_policies()
+    for group in policies:
+        print(('group: {} has {} params, lr_mult: {}, decay_mult: {}'.format(
+                group['name'], len(group['params']), group['lr_mult'], group['decay_mult'])))
+    optimizer = torch.optim.SGD(policies,
+                                lr,
+                                momentum=momentum,
+                                weight_decay=weight_decay)
+    return optimizer
 
-    output = ('Testing Results: Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f} Loss {loss.avg:.5f}'
-          .format(top1=top1, top5=top5, loss=losses))
+
+def get_criterion(loss_type):
+    if loss_type == 'nll':
+        criterion = torch.nn.CrossEntropyLoss().cuda()
+    else:
+        raise ValueError("Unknown loss type")
+    return criterion
+
+
+def get_dataloaders(model, root_path, train_list, val_list,
+                    filename_prefix='{:05d}.jpg', batch_size=64, worker_count=0):
+    crop_size = model.crop_size
+    scale_size = model.scale_size
+    input_mean = model.input_mean
+    input_std = model.input_std
+    train_augmentation = model.get_augmentation()
+
+    if model.modality == 'RGB':
+        normalize = NormalizeVideo(input_mean * model.num_segments,
+                                   input_std * model.num_segments)
+        data_length = 1
+    elif model.modality == 'Flow':
+        normalize = NormalizeVideo(np.mean(input_mean), np.mean(input_std))
+        data_length = 5
+    elif model.modality == 'RGBDiff':
+        normalize = lambda d: d
+        data_length = 5
+    else:
+        raise ValueError("Unknown modality {}".format(model.modality))
+
+    is_inception_model = (model.arch in ['BNInception', 'InceptionV3'])
+
+    if is_inception_model:
+        # Inception models are converted from caffe and expect BGR images, not RGB.
+        channel_transform = FlipChannels()
+    else:
+        channel_transform = lambda f: f
+    train_transform = Compose([
+        train_augmentation,
+        CollectFrames(),
+        PILVideoToTensor(rescale=not is_inception_model),
+        channel_transform,
+        TimeToChannel(),
+        normalize
+    ])
+    val_transform = Compose([
+        ResizeVideo(int(scale_size)),
+        CenterCropVideo(crop_size),
+        CollectFrames(),
+        PILVideoToTensor(rescale=not is_inception_model),
+        channel_transform,
+        TimeToChannel(),
+        normalize
+    ])
+    train_filelist = FileList(args.train_list)
+    val_filelist = FileList(args.val_list)
+
+    def train_filter(vid_path: Union[Path, str]):
+        try:
+            name = vid_path.name
+        except AttributeError:
+            name = vid_path
+        keep = name in train_filelist
+        return keep
+
+    def val_filter(vid_path: Union[Path, str]):
+        try:
+            name = vid_path.name
+        except AttributeError:
+            name = vid_path
+        keep = name in val_filelist
+        return keep
+
+    is_gulp_dataset = (root_path / 'data_0.gulp').exists()
+    sampler = TemporalSegmentSampler(model.num_segments, data_length)
+    if is_gulp_dataset:
+        train_dataset = GulpVideoDataset(root_path,
+                                         filter=train_filter,
+                                         label_field="label_numeric",
+                                         sampler=sampler,
+                                         transform=Compose([NDArrayToPILVideo(),
+                                                            train_transform]))
+        val_dataset = GulpVideoDataset(root_path,
+                                       filter=val_filter,
+                                       label_field="label_numeric",
+                                       sampler=sampler,
+                                       transform=Compose([NDArrayToPILVideo(),
+                                                          val_transform]))
+    else:
+        def train_frame_counter(path):
+            return train_filelist[path.name].num_frames
+
+        def val_frame_counter(path):
+            return val_filelist[path.name].num_frames
+
+        train_dataset = ImageFolderVideoDataset(root_path,
+                                                filename_prefix,
+                                                filter=train_filter,
+                                                label_set=FileListLabelSet(train_filelist),
+                                                sampler=sampler,
+                                                transform=train_transform,
+                                                frame_counter=train_frame_counter
+                                                )
+        val_dataset = ImageFolderVideoDataset(root_path,
+                                              filename_prefix,
+                                              filter=val_filter,
+                                              label_set=FileListLabelSet(val_filelist),
+                                              sampler=sampler,
+                                              transform=val_transform,
+                                              frame_counter=val_frame_counter
+                                              )
+    train_loader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=batch_size, shuffle=True,
+            num_workers=worker_count, pin_memory=True)
+    val_loader = torch.utils.data.DataLoader(
+            val_dataset,
+            batch_size=batch_size, shuffle=False,
+            num_workers=worker_count, pin_memory=True)
+    return train_loader, val_loader
+
+
+class EngineTimer:
+    def __init__(self, engine):
+        self._engine = engine
+        self._iteration_start_time = None
+        self._iteration_stop_time = None
+        self._engine.add_event_handler(Events.ITERATION_STARTED, self.on_iteration_start)
+        self._engine.add_event_handler(Events.ITERATION_COMPLETED, self.on_iteration_completion)
+
+    def on_iteration_completion(self, engine):
+        self._iteration_stop_time = time.time()
+        engine.state.metrics['batch processing time'] = self._iteration_stop_time - self._iteration_start_time
+
+    def on_iteration_start(self, engine):
+        self._iteration_start_time = time.time()
+        if self._iteration_stop_time is None:
+            loading_time = 0
+        else:
+            loading_time = self._iteration_start_time - self._iteration_stop_time
+        engine.state.metrics['data loading time'] = loading_time
+
+
+def log_metrics(engine, num_batches):
+    iteration = (engine.state.iteration - 1) % num_batches + 1
+    metrics = engine.state.metrics
+    output = ('Epoch: [{epoch}][{iteration}/{num_batches}], lr: {lr:.5f}\t'
+              'Time {batch_time:.3f}\t'
+              'Data {data_time:.3f}\t'
+              'Loss {loss:.4f}\t'
+              'Prec@1 {top1:.3f}\t'
+              'Prec@5 {top5:.3f}'.format(
+            epoch=engine.state.epoch,
+            iteration=iteration,
+            num_batches=num_batches,
+            batch_time=metrics['batch processing time'],
+            data_time=metrics['data loading time'],
+            loss=metrics['loss'],
+            top1=metrics['top-1 accuracy'] * 100,
+            top5=metrics['top-5 accuracy'] * 100,
+            lr=metrics['lr'])
+    )
+    # output = ('Epoch: [{epoch}][{iteration}/{num_batches}]\t'
+    #           'Time {batch_time:.3f}\t'
+    #           'Data {data_time:.3f}\t'
+    #           'Loss {loss:.4f}\t'
+    #           'Prec@1 {top1:.3f}\t'
+    #           'Prec@5 {top5:.3f}'.format(
+    #         epoch=engine.state.epoch,
+    #         iteration=iteration,
+    #         num_batches=num_batches,
+    #         batch_time=metrics['batch processing time'],
+    #         data_time=metrics['data loading time'],
+    #         loss=metrics['loss'],
+    #         top1=metrics['top-1 accuracy'],
+    #         top5=metrics['top-5 accuracy']
+    # ))
     print(output)
-    output_best = '\nBest Prec@1: %.3f'%(best_prec1)
-    print(output_best)
-    log.write(output + ' ' + output_best + '\n')
-    log.flush()
 
-    return top1.avg
+
+def read_categories(categories_path: Path):
+    with open(categories_path) as f:
+        lines = f.readlines()
+
+    categories = [item.rstrip() for item in lines]
+    return categories
 
 
 def save_checkpoint(state, is_best):
@@ -273,48 +378,14 @@ def save_checkpoint(state, is_best):
         shutil.copyfile('%s/%s_checkpoint.pth.tar' % (args.root_model, args.store_name),'%s/%s_best.pth.tar' % (args.root_model, args.store_name))
 
 
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-
 def adjust_learning_rate(optimizer, epoch, lr_steps):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    decay = 0.1 ** (sum(epoch >= np.array(lr_steps)))
-    lr = args.lr * decay
-    decay = args.weight_decay
+    lr_decay = 0.1 ** (sum(epoch >= np.array(lr_steps)))
+    lr = args.lr * lr_decay
+    weight_decay = args.weight_decay
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr * param_group['lr_mult']
-        param_group['weight_decay'] = decay * param_group['decay_mult']
-
-
-def accuracy(output, target, topk=(1,)):
-    """Computes the precision@k for the specified values of k"""
-    maxk = max(topk)
-    batch_size = target.size(0)
-
-    _, pred = output.topk(maxk, 1, True, True)
-    pred = pred.t()
-    correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-    res = []
-    for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(0)
-        res.append(correct_k.mul_(100.0 / batch_size))
-    return res
+        param_group['weight_decay'] = weight_decay * param_group['decay_mult']
 
 
 def check_rootfolders():
