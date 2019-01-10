@@ -2,10 +2,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 from torch.autograd import Variable
 import numpy as np
-import pdb
+
 
 class RelationModule(torch.nn.Module):
     # this is the naive implementation of the n-frame relation module, as num_frames == num_frames_relation
@@ -15,6 +14,7 @@ class RelationModule(torch.nn.Module):
         self.num_class = num_class
         self.img_feature_dim = img_feature_dim
         self.classifier = self.fc_fusion()
+
     def fc_fusion(self):
         # naive concatenate
         num_bottleneck = 512
@@ -25,10 +25,12 @@ class RelationModule(torch.nn.Module):
                 nn.Linear(num_bottleneck,self.num_class),
                 )
         return classifier
+
     def forward(self, input):
         input = input.view(input.size(0), self.num_frames*self.img_feature_dim)
         input = self.classifier(input)
         return input
+
 
 class RelationModuleMultiScale(torch.nn.Module):
     # Temporal Relation module in multiply scale, suming over [2-frame relation, 3-frame relation, ..., n-frame relation]
@@ -145,6 +147,7 @@ class RelationModuleMultiScaleWithClassifier(torch.nn.Module):
         import itertools
         return list(itertools.combinations([i for i in range(num_frames)], num_frames_relation))
 
+
 def return_TRN(relation_type, img_feature_dim, num_frames, num_class):
     if relation_type == 'TRN':
         TRNmodel = RelationModule(img_feature_dim, num_frames, num_class)
@@ -155,6 +158,7 @@ def return_TRN(relation_type, img_feature_dim, num_frames, num_class):
 
 
     return TRNmodel
+
 
 if __name__ == "__main__":
     batch_size = 10

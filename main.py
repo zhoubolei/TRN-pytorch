@@ -1,8 +1,12 @@
+import numbers
 import os
+import sys
 import time
 import shutil
-from typing import Dict, Union
+import warnings
+from typing import Dict, Union, List
 from pathlib import Path
+from tensorboardX import SummaryWriter
 
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
@@ -11,14 +15,15 @@ import torch.utils.data
 from ignite.contrib.handlers import ProgressBar
 from ignite.engine import _prepare_batch
 from ignite.handlers import ModelCheckpoint
+from torch.nn import DataParallel
 from torch.nn.utils import clip_grad_norm_
 from ignite.engine import Events, create_supervised_evaluator, Engine
 from ignite.metrics import Accuracy, Loss, TopKCategoricalAccuracy, Metric
 from torchvideo.datasets import GulpVideoDataset, ImageFolderVideoDataset
 from torchvideo.samplers import TemporalSegmentSampler
 from torchvideo.transforms import ResizeVideo, CenterCropVideo, CollectFrames, \
-    PILVideoToTensor, np, NormalizeVideo, TimeToChannel, NDArrayToPILVideo
-from torchvision.transforms import Compose
+    PILVideoToTensor, np, NormalizeVideo, TimeToChannel, TimeApply
+from torchvision.transforms import Compose, ToPILImage
 
 from label_sets import FileListLabelSet, FileList
 from models import TSN
@@ -26,53 +31,110 @@ from transforms import *
 from opts import parser, log_levels
 import logging
 
+cudnn.benchmark = True
+
+
+class GlobalStep:
+    def __init__(self):
+        self._step = 0
+
+    def increment(self, *args, **kwargs):
+        self._step += 1
+
+    @property
+    def step(self):
+        return self._step
+
+    @step.setter
+    def step(self, step):
+        self._step = step
+
+
+def filename_format_value(value, precision=2):
+    if isinstance(value, numbers.Number):
+        return ("{:." + str(precision) + "e}").format(value)
+    return "{}".format(value)
+
+
+def get_model_filename(model: Union[TSN, DataParallel],
+                       optimizer: torch.optim.Optimizer,
+                       dataset: str):
+    if isinstance(model, DataParallel):
+        model = model.module
+    optimizer_str = "optim=" + optimizer.__class__.__name__.lower()
+    optimizer_str += "_".join([f"{name}={filename_format_value(value)}"
+                               for name, value in optimizer.defaults.items()])
+    return (f"{model.arch}" +
+            f"_dataset={dataset}" +
+            f"_segments={model.num_segments}" +
+            f"_consensus={model.consensus_type}" +
+            "_" + optimizer_str)
+
+
+def get_summary_writer(model: torch.nn.Module,
+                       data_loader: torch.utils.data.DataLoader,
+                       log_dir=Path('.')):
+    writer = SummaryWriter(log_dir=str(log_dir))
+    x, _ = next(iter(data_loader))
+    try:
+        writer.add_graph(model, x)
+    except Exception as e:
+        print("Failed to save model graph: {}".format(e))
+    return writer
+
+
+def add_progress_bar(engine, metrics: List[str] = None):
+    progress_bar = ProgressBar()
+    progress_bar.attach(engine, metric_names=metrics)
+
+
+def get_log_dir(experiment_dir: Path, model_name: str):
+    return experiment_dir / model_name
+
 
 def main():
-    global args, best_prec1
+    global args
     args = parser.parse_args()
+    print("Argument settings")
+    print("=================")
+    parser.print_values()
+    print("=================")
     logging.basicConfig(level=log_levels[args.verbosity])
-    check_rootfolders()
 
     categories = read_categories(args.categories)
     num_class = len(categories)
 
     modality = args.modality
-    num_segments = args.num_segments
+    segment_count = args.segment_count
     arch = args.arch
-    if args.store_name is None:
-        args.store_name = '_'.join(['TRN', args.dataset, modality, arch, args.consensus_type, 'segment%d' % num_segments])
-        print('Set store_name: ' + args.store_name)
 
-    model = TSN(num_class, num_segments, modality,
+    model = TSN(num_class, segment_count, modality,
                 base_model=arch,
                 consensus_type=args.consensus_type,
                 dropout=args.dropout,
                 img_feature_dim=args.img_feature_dim,
                 partial_bn=not args.no_partialbn)
 
-    if args.resume:
-        if os.path.isfile(args.resume):
-            print(("=> loading checkpoint '{}'".format(args.resume)))
-            checkpoint = torch.load(args.resume)
-            args.start_epoch = checkpoint['epoch']
-            best_prec1 = checkpoint['best_prec1']
-            model.load_state_dict(checkpoint['state_dict'])
-            print(("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.evaluate, checkpoint['epoch'])))
-        else:
-            print(("=> no checkpoint found at '{}'".format(args.resume)))
-
-    cudnn.benchmark = True
-
     train_loader, val_loader = get_dataloaders(model, args.root_path, args.train_list, args.val_list,
                                                filename_prefix=args.image_prefix, batch_size=args.batch_size,
                                                worker_count=args.workers)
+
     criterion = get_criterion(args.loss_type)
     optimizer = get_optimizer(model, args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+
+    model_filename = get_model_filename(model, optimizer, args.dataset)
+    log_dir = get_log_dir(args.experiment_dir, model_filename)
+    summary_writer = get_summary_writer(model, train_loader, log_dir=log_dir)
 
     device = get_device()
     model = torch.nn.DataParallel(model)
     model.to(device)
+
+    if args.resume is not None:
+        epoch = resume_model(args, model, optimizer)
+    else:
+        epoch = 0
+
     print("Train dataset size: {}".format(len(train_loader) * train_loader.batch_size))
     print("Val dataset size: {}".format(len(val_loader) * val_loader.batch_size))
 
@@ -108,7 +170,7 @@ def main():
             'loss': Loss(criterion)
         }
 
-    def attach_metrics(metrics: Dict[str, Metric], engine: Engine):
+    def attach_metrics(metrics: Dict[str, Metric], engine: Engine, val=False):
         for name, metric in metrics.items():
             metric.attach(engine, name)
 
@@ -120,19 +182,24 @@ def main():
             # we fire that on ITERATION_START.
             # TODO: Look at using RunningAverage to replace this:
             #   https://pytorch.org/ignite/metrics.html#ignite.metrics.RunningAverage
-            engine.add_event_handler(Events.ITERATION_STARTED, metric.started)
-            engine.add_event_handler(Events.ITERATION_COMPLETED, metric.completed, name)
+            if not val:
+                engine.add_event_handler(Events.ITERATION_STARTED, metric.started)
+                engine.add_event_handler(Events.ITERATION_COMPLETED, metric.completed, name)
         return metrics
 
     # Metrics must be attached after adjust_lr is attached so lr is available in
     # state.metrics
-    train_metrics = attach_metrics(get_metrics(), trainer)
-    val_metrics = attach_metrics(get_metrics(), evaluator)
+    attach_metrics(get_metrics(), trainer)
+    attach_metrics(get_metrics(), evaluator, val=True)
 
     @trainer.on(Events.EPOCH_STARTED)
     def adjust_lr(engine):
         adjust_learning_rate(optimizer, engine.state.epoch, args.lr_steps)
         engine.state.metrics['lr'] = optimizer.param_groups[-1]['lr']
+
+    global_step = GlobalStep()
+
+    trainer.add_event_handler(Events.ITERATION_COMPLETED, global_step.increment)
 
     # Attach after logging metrics
     @trainer.on(Events.ITERATION_COMPLETED)
@@ -140,6 +207,9 @@ def main():
         iteration = (engine.state.iteration - 1) % len(train_loader) + 1
         if iteration % args.print_freq == 0:
             log_metrics(engine, len(train_loader))
+        if iteration % args.tensboard_log_freq == 0:
+            log_tensorboard_metrics(summary_writer, engine, global_step)
+        sys.stdout.flush()
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def evaluate_model(engine):
@@ -147,24 +217,56 @@ def main():
                 engine.state.epoch + 1 == args.epochs:
             evaluator.run(val_loader)
 
-
-    pbar = ProgressBar()
-    pbar.attach(evaluator)
-    pbar.attach(trainer)
-
-    checkpoint_handler = ModelCheckpoint(args.root_model, args.store_name, save_interval=1, n_saved=1,
+    if args.progress_bar:
+        metric_names = ['top-1 accuracy', 'top-5 accuracy']
+        add_progress_bar(evaluator, metrics=metric_names)
+        add_progress_bar(trainer, metrics=metric_names)
+    print(f"=> Model will be saved with prefix '{args.experiment_dir / model_filename}'")
+    checkpointer = ModelCheckpoint(args.experiment_dir, model_filename,
+                                         save_interval=1, n_saved=1,
                                          require_empty=False, create_dir=True)
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, handler=checkpoint_handler,
-                              to_save={'model': model})
 
-    @evaluator.on(Events.ITERATION_COMPLETED)
+    @trainer.on(Events.EPOCH_COMPLETED)
+    def checkpoint(engine):
+        checkpointer(engine, {
+            # First dictionary specifies filename_suffix: object
+            # we want a single file containing a dictionary of
+            # objects
+            'state': {
+                'epoch': engine.state.epoch,
+                'model': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'args': args,
+            }
+        })
+
+    @evaluator.on(Events.EPOCH_COMPLETED)
     def log_val_stats(engine):
-        iteration = (engine.state.iteration - 1) % len(val_loader) + 1
-        if iteration % args.print_freq == 0:
-            log_metrics(engine, len(val_loader))
+        log_metrics(engine, len(val_loader), val=True)
+        log_tensorboard_metrics(summary_writer, engine, global_step, val=True)
+        sys.stdout.flush()
 
+    if args.evaluate:
+        evaluator.run(val_loader)
     # TODO: Figure out how to set initial epoch count for resumed models
-    trainer.run(train_loader, max_epochs=args.epochs)
+    trainer.run(train_loader, start_epoch=epoch, max_epochs=args.epochs)
+
+
+def resume_model(args, model, optimizer):
+    checkpoint_path = args.resume
+    if checkpoint_path.exists():
+        print(("=> loading checkpoint '{}'".format(checkpoint_path)))
+        checkpoint = torch.load(checkpoint_path)
+        epoch = checkpoint['epoch']
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+
+        print(("=> loaded checkpoint '{}' (epoch {})"
+               .format(checkpoint_path, epoch)))
+        return epoch
+    else:
+        print(("=> no checkpoint found at '{}'".format(checkpoint_path)))
+        return 0
 
 
 def get_device():
@@ -200,6 +302,31 @@ def get_dataloaders(model, root_path, train_list, val_list,
     input_mean = model.input_mean
     input_std = model.input_std
     train_augmentation = model.get_augmentation()
+
+    is_gulp_dataset = (root_path / 'train' / 'data_0.gulp').exists()
+
+    local_dir = args.local_dir
+    if args.copy_local:
+        if not local_dir.exists() :
+            try:
+                local_dir.mkdir(parents=True)
+            except OSError:
+                warnings.warn("Cannot copy dataset to {} as it doesn't exist".format(local_dir))
+        else:
+            dest_root = local_dir / root_path.name
+            if is_gulp_dataset:
+                for folder in ('train', 'validation'):
+                    src = root_path / folder
+                    dest = dest_root / folder
+                    if not dest.exists():
+                        print("Copying {} to {}".format(src, dest))
+                        shutil.copytree(src, dest)
+                root_path = dest_root
+            else:
+                if not dest_root.exists():
+                    print("Copying {} to {}".format(root_path, dest_root))
+                    shutil.copytree(root_path, dest_root)
+                root_path = dest_root
 
     if model.modality == 'RGB':
         normalize = NormalizeVideo(input_mean * model.num_segments,
@@ -238,8 +365,8 @@ def get_dataloaders(model, root_path, train_list, val_list,
         TimeToChannel(),
         normalize
     ])
-    train_filelist = FileList(args.train_list)
-    val_filelist = FileList(args.val_list)
+    train_filelist = FileList(train_list)
+    val_filelist = FileList(val_list)
 
     def train_filter(vid_path: Union[Path, str]):
         try:
@@ -257,20 +384,21 @@ def get_dataloaders(model, root_path, train_list, val_list,
         keep = name in val_filelist
         return keep
 
-    is_gulp_dataset = (root_path / 'data_0.gulp').exists()
     sampler = TemporalSegmentSampler(model.num_segments, data_length)
     if is_gulp_dataset:
-        train_dataset = GulpVideoDataset(root_path,
+        gulp_label_field = "idx"
+        pil_transform = TimeApply(ToPILImage())
+        train_dataset = GulpVideoDataset(root_path / 'train',
                                          filter=train_filter,
-                                         label_field="label_numeric",
+                                         label_field=gulp_label_field,
                                          sampler=sampler,
-                                         transform=Compose([NDArrayToPILVideo(),
+                                         transform=Compose([pil_transform,
                                                             train_transform]))
-        val_dataset = GulpVideoDataset(root_path,
+        val_dataset = GulpVideoDataset(root_path / 'validation',
                                        filter=val_filter,
-                                       label_field="label_numeric",
+                                       label_field=gulp_label_field,
                                        sampler=sampler,
-                                       transform=Compose([NDArrayToPILVideo(),
+                                       transform=Compose([pil_transform,
                                                           val_transform]))
     else:
         def train_frame_counter(path):
@@ -327,40 +455,57 @@ class EngineTimer:
         engine.state.metrics['data loading time'] = loading_time
 
 
-def log_metrics(engine, num_batches):
+def log_tensorboard_metrics(writer: SummaryWriter, engine: Engine,
+                            global_step: GlobalStep, val=False):
+    metrics = engine.state.metrics
+
+    def add_scalar(name, value):
+        writer.add_scalars(name, {
+            'val' if val else 'train': value
+        }, global_step=global_step.step)
+
+    add_scalar('accuracy/top-1', metrics['top-1 accuracy'] * 100)
+    add_scalar('accuracy/top-5', metrics['top-5 accuracy'] * 100)
+    add_scalar('loss', metrics['loss'] * 100)
+    if not val:
+        add_scalar('time/data', metrics['data loading time'])
+        add_scalar('time/main', metrics['batch processing time'])
+        add_scalar('lr', metrics['lr'])
+
+
+def log_metrics(engine, num_batches, val=False):
     iteration = (engine.state.iteration - 1) % num_batches + 1
     metrics = engine.state.metrics
-    output = ('Epoch: [{epoch}][{iteration}/{num_batches}], lr: {lr:.5f}\t'
-              'Time {batch_time:.3f}\t'
-              'Data {data_time:.3f}\t'
-              'Loss {loss:.4f}\t'
-              'Prec@1 {top1:.3f}\t'
-              'Prec@5 {top5:.3f}'.format(
-            epoch=engine.state.epoch,
-            iteration=iteration,
-            num_batches=num_batches,
-            batch_time=metrics['batch processing time'],
-            data_time=metrics['data loading time'],
-            loss=metrics['loss'],
-            top1=metrics['top-1 accuracy'] * 100,
-            top5=metrics['top-5 accuracy'] * 100,
-            lr=metrics['lr'])
-    )
-    # output = ('Epoch: [{epoch}][{iteration}/{num_batches}]\t'
-    #           'Time {batch_time:.3f}\t'
-    #           'Data {data_time:.3f}\t'
-    #           'Loss {loss:.4f}\t'
-    #           'Prec@1 {top1:.3f}\t'
-    #           'Prec@5 {top5:.3f}'.format(
-    #         epoch=engine.state.epoch,
-    #         iteration=iteration,
-    #         num_batches=num_batches,
-    #         batch_time=metrics['batch processing time'],
-    #         data_time=metrics['data loading time'],
-    #         loss=metrics['loss'],
-    #         top1=metrics['top-1 accuracy'],
-    #         top5=metrics['top-5 accuracy']
-    # ))
+    if not val:
+        output = ('Epoch: [{epoch}][{iteration}/{num_batches}], lr: {lr:.5f}\t'
+                  'Time {batch_time:.3f}\t'
+                  'Data {data_time:.3f}\t'
+                  'Loss {loss:.4f}\t'
+                  'Prec@1 {top1:.3f}\t'
+                  'Prec@5 {top5:.3f}').format(
+                epoch=engine.state.epoch,
+                iteration=iteration,
+                num_batches=num_batches,
+                batch_time=metrics['batch processing time'],
+                data_time=metrics['data loading time'],
+                loss=metrics['loss'],
+                top1=metrics['top-1 accuracy'] * 100,
+                top5=metrics['top-5 accuracy'] * 100,
+                lr=metrics['lr']
+        )
+    else:
+        print("Validation stats:")
+        output = ('Time {batch_time:.3f}\t'
+                  'Data {data_time:.3f}\t'
+                  'Loss {loss:.4f}\t'
+                  'Prec@1 {top1:.3f}\t'
+                  'Prec@5 {top5:.3f}').format(
+                batch_time=metrics['batch processing time'],
+                data_time=metrics['data loading time'],
+                loss=metrics['loss'],
+                top1=metrics['top-1 accuracy'] * 100,
+                top5=metrics['top-5 accuracy'] * 100
+        )
     print(output)
 
 
@@ -372,12 +517,6 @@ def read_categories(categories_path: Path):
     return categories
 
 
-def save_checkpoint(state, is_best):
-    torch.save(state, '%s/%s_checkpoint.pth.tar' % (args.root_model, args.store_name))
-    if is_best:
-        shutil.copyfile('%s/%s_checkpoint.pth.tar' % (args.root_model, args.store_name),'%s/%s_best.pth.tar' % (args.root_model, args.store_name))
-
-
 def adjust_learning_rate(optimizer, epoch, lr_steps):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     lr_decay = 0.1 ** (sum(epoch >= np.array(lr_steps)))
@@ -386,15 +525,6 @@ def adjust_learning_rate(optimizer, epoch, lr_steps):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr * param_group['lr_mult']
         param_group['weight_decay'] = weight_decay * param_group['decay_mult']
-
-
-def check_rootfolders():
-    """Create log and model folder"""
-    folders_util = [args.root_log, args.root_model, args.root_output]
-    for folder in folders_util:
-        if not os.path.exists(folder):
-            print('creating folder ' + folder)
-            os.mkdir(folder)
 
 
 if __name__ == '__main__':
