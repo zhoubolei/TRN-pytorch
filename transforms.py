@@ -7,6 +7,44 @@ import math
 import torch
 
 
+from vidaug import augmentors as va  # pip3 install git+https://github.com/okankop/vidaug --user
+
+
+class RGB2Gray(object):
+    def __call__(self, clip):
+        return [x.convert('L').convert('RGB') for x in clip]
+
+
+class Augmentor(object):
+    def __init__(self, prob=0.5, N=2, random_order=True):
+        sometimes = lambda aug: va.Sometimes(prob, aug) # Used to apply augmentor with 50% probability
+        self.augmentor = va.Sequential([
+            va.SomeOf(
+            [
+                sometimes(va.GaussianBlur(sigma=3.0)),
+                sometimes(va.ElasticTransformation(alpha=3.5, sigma=0.25)),
+                sometimes(va.PiecewiseAffineTransform(displacement=5, displacement_kernel=1, displacement_magnification=1)),
+                sometimes(va.RandomRotate(degrees=10)),
+                sometimes(va.RandomResize(0.5)),
+                sometimes(va.RandomTranslate(x=20, y=20)),
+                sometimes(va.RandomShear(x=0.2, y=0.2)),
+                sometimes(va.InvertColor()),
+                sometimes(va.Add(100)),
+                sometimes(va.Multiply(1.2)),
+                sometimes(va.Pepper()),
+                sometimes(va.Salt()),
+                sometimes(va.HorizontalFlip()),
+                sometimes(va.TemporalElasticTransformation()),
+                sometimes(RGB2Gray())
+            ],
+            N=N,
+            random_order=random_order
+        )])
+    
+    def __call__(self, img_group):
+        return self.augmentor(img_group)
+
+
 class GroupRandomCrop(object):
     def __init__(self, size):
         if isinstance(size, numbers.Number):

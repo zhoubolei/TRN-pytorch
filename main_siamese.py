@@ -18,47 +18,30 @@ import datasets_video
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 
-best_prec1 = 10000
+best_loss = 10000
 
 summary_writer = SummaryWriter(log_dir='logs') 
 
 
-# class ContrastiveLoss(nn.Module):
-#     """
-#     Cosine contrastive loss function.
-#     Based on: http://anthology.aclweb.org/W16-1617
-#     Maintain 0 for match, 1 for not match.
-#     If they match, loss is 1/4(1-cos_sim)^2.
-#     If they don't, it's cos_sim^2 if cos_sim < margin or 0 otherwise.
-#     Margin in the paper is ~0.4.
-#     """
+class ContrastiveLossCosine(nn.Module):
+    """
+    Cosine contrastive loss function.
+    Based on: http://anthology.aclweb.org/W16-1617
+    Maintain 1 for match, 0 for not match.
+    If they match, loss is 1/4(1-cos_sim)^2.
+    If they don't, it's cos_sim^2 if cos_sim < margin or 0 otherwise.
+    Margin in the paper is ~0.4.
+    """
 
-#     def __init__(self, margin=0.5):
-#         super(ContrastiveLoss, self).__init__()
-#         self.margin = margin
+    def __init__(self, margin=0.4):
+        super(ContrastiveLoss, self).__init__()
+        self.margin = margin
 
-#     def forward(self, output1, output2, label):
-#         label = label.squeeze(1)
-#         cos_sim = F.cosine_similarity(output1, output2)
-#         return torch.mean(label * torch.div(torch.pow((1.0 - cos_sim), 2), 4) +
-#                                   (1 - label) * torch.pow(cos_sim * torch.lt(cos_sim, self.margin).float(), 2))
-
-
-# class ContrastiveLoss(torch.nn.Module):
-#     """
-#     Contrastive loss function.
-#     Based on: http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
-#     """
-
-#     def __init__(self, margin=0.5):
-#         super(ContrastiveLoss, self).__init__()
-#         self.margin = margin
-
-#     def forward(self, output1, output2, label):
-#         cosine_distance = 1 - F.cosine_similarity(output1, output2)
-#         loss_contrastive = torch.mean(label * torch.pow(cosine_distance, 2) +
-#                                       (1 - label) * torch.pow(torch.clamp(self.margin - cosine_distance, min=0.0), 2))
-#         return loss_contrastive
+    def forward(self, output1, output2, label):
+        label = label.squeeze(1)
+        cos_sim = F.cosine_similarity(output1, output2)
+        return torch.mean(label * torch.div(torch.pow((1.0 - cos_sim), 2), 4) +
+                                  (1 - label) * torch.pow(cos_sim * torch.lt(cos_sim, self.margin).float(), 2))
 
 
 class ContrastiveLoss(torch.nn.Module):
@@ -77,29 +60,10 @@ class ContrastiveLoss(torch.nn.Module):
         loss_contrastive = torch.mean(label * torch.pow(euclidean_distance, 2) +
                                       (1 - label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
         return loss_contrastive
-
-
-# class ContrastiveLoss(torch.nn.Module):
-#     """
-#     Contrastive loss
-#     Takes embeddings of two samples and a target label == 1 if samples are from the same class and label == 0 otherwise
-#     """
-
-#     def __init__(self, margin=20):
-#         super(ContrastiveLoss, self).__init__()
-#         self.margin = margin
-#         self.eps = 1e-9
-
-#     def forward(self, output1, output2, target, size_average=True):
-#         target = target.squeeze(1)
-#         distances = (output2 - output1).pow(2).sum(1)  # squared distances
-#         losses = 0.5 * (target * distances +
-#                         (1 - target) * F.relu(self.margin - (distances + self.eps).sqrt()).pow(2))
-#         return losses.mean() if size_average else losses.sum()
         
 
 def main():
-    global args, best_prec1
+    global args, best_loss
     args = parser.parse_args()
     check_rootfolders()
 
@@ -116,6 +80,7 @@ def main():
                 dropout=args.dropout,
                 img_feature_dim=args.img_feature_dim,
                 partial_bn=not args.no_partialbn)
+# freeze cnn if neccessary
 #     _, cnn =list(model.named_children())[0]
 #     for p in cnn.parameters():
 #         p.requires_grad = False
@@ -129,7 +94,7 @@ def main():
 
     model = torch.nn.DataParallel(model, device_ids=args.gpus).cuda()
     
-    # remove if not transfer learning    
+    # remove if not transfer learning (this is pretrained TRN model taken from here: http://relation.csail.mit.edu/models/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best_v0.4.pth.tar)    
     checkpoint = torch.load('/home/ec2-user/mit_weights.pth.tar')
     model.load_state_dict(checkpoint['state_dict'])
     for module in list(list(model._modules['module'].children())[-1].children())[-1].children():
@@ -140,7 +105,7 @@ def main():
             print(("=> loading checkpoint '{}'".format(args.resume)))
             checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
-            best_prec1 = checkpoint['best_prec1']
+            best_loss = checkpoint['best_loss']
             model.load_state_dict(checkpoint['state_dict'])
             print(("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.evaluate, checkpoint['epoch'])))
@@ -168,6 +133,7 @@ def main():
                    modality=args.modality,
                    image_tmpl=prefix,
                    transform=torchvision.transforms.Compose([
+                       Augmentor(),
                        train_augmentation,
                        Stack(roll=(args.arch in ['BNInception','InceptionV3'])),
                        ToTorchFormatTensor(div=(args.arch not in ['BNInception','InceptionV3'])),
@@ -217,16 +183,16 @@ def main():
 
         # evaluate on validation set
         if (epoch + 1) % args.eval_freq == 0 or epoch == args.epochs - 1:
-            prec1 = validate(val_loader, model, criterion, (epoch + 1) * len(train_loader), log_training, epoch)
+            loss = validate(val_loader, model, criterion, (epoch + 1) * len(train_loader), log_training, epoch)
 
-            # remember best prec@1 and save checkpoint
-            is_best = prec1 < best_prec1
-            best_prec1 = min(prec1, best_prec1)
+            # remember best loss and save checkpoint
+            is_best = loss < best_loss
+            best_loss = min(prec1, best_loss)
             save_checkpoint({
                 'epoch': epoch + 1,
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
-                'best_prec1': best_prec1,
+                'best_loss': best_loss,
             }, is_best)
     summary_writer.close()
 

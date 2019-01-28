@@ -4,41 +4,6 @@ import numpy as np
 import torch
 
 from dataset import TSNDataSet
-from vidaug import augmentors as va  # pip3 install git+https://github.com/okankop/vidaug --user
-
-
-class RGB2Gray(object):
-    def __call__(self, clip):
-        return [x.convert('L').convert('RGB') for x in clip]
-
-
-def augmentation(prob=0.5, N=2, random_order=True):
-    sometimes = lambda aug: va.Sometimes(prob, aug) # Used to apply augmentor with 50% probability
-    return va.Sequential([
-        va.SomeOf(
-        [
-            sometimes(va.GaussianBlur(sigma=3.0)),
-            sometimes(va.ElasticTransformation(alpha=3.5, sigma=0.25)),
-            sometimes(va.PiecewiseAffineTransform(displacement=5, displacement_kernel=1, displacement_magnification=1)),
-            sometimes(va.RandomRotate(degrees=10)),
-            sometimes(va.RandomResize(0.5)),
-            sometimes(va.RandomTranslate(x=20, y=20)),
-            sometimes(va.RandomShear(x=0.2, y=0.2)),
-            sometimes(va.InvertColor()),
-            sometimes(va.Add(100)),
-            sometimes(va.Multiply(1.2)),
-            sometimes(va.Pepper()),
-            sometimes(va.Salt()),
-            sometimes(va.HorizontalFlip()),
-            sometimes(va.TemporalElasticTransformation()),
-            sometimes(RGB2Gray())
-        ],
-        N=N,
-        random_order=random_order
-    )]) 
-
-
-aug = augmentation()
 
 
 class SiameseDataset(TSNDataSet):
@@ -54,9 +19,10 @@ class SiameseDataset(TSNDataSet):
             other_label = next(x for x in other_labels if x != label)
             other_index = random.choice(self.label2videos[other_label])
             other_path, other_data, other_label, _ = self.get(other_index)
+#       label == 1 - match, 0 - no match
         return data, other_data, torch.Tensor([float(label == other_label)])
     
-    def get(self, index=None, apply_aug=True):
+    def get(self, index=None):
         if index is None:
             index = random.choice(range(len(self.video_list)))
         record = self.video_list[index]
@@ -75,8 +41,6 @@ class SiameseDataset(TSNDataSet):
                 if p < record.num_frames:
                     p += 1
         
-        if apply_aug:
-            images = aug(images)
         process_data = self.transform(images)
         return record.path, process_data, record.label, index
     

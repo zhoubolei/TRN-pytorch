@@ -6,25 +6,24 @@ from time import sleep
 from multiprocessing import Pool
 from PIL import Image
 from itertools import islice
+import pickle
+from math import ceil
 
 logging.basicConfig(
     format='%(asctime)s:%(levelname)s: %(message)s',
     level=logging.INFO
 )
 
-# OUTPUT_PATH = '/home/ec2-user/mnt/giphy_dataset'
 OUTPUT_PATH = '/home/ec2-user/gifs'
 
 # gifs2cat = pd.read_csv('/home/ec2-user/gifs2cat.csv')
 # gifs2cat = gifs2cat.groupby('gif_id')['category'].apply(list)
 # gifs2cat = pd.read_csv('/home/ec2-user/reactions.csv')
-import pickle
-from math import ceil
-
 payload = pickle.load(open('/home/ec2-user/siamese_dataset.pkl', 'rb'))
 gifs = []
 for x in payload:
     gifs.extend(list(x))
+
 
 def evenly_spaced_sampling(array, n):
     """Choose `n` evenly spaced elements from `array` sequence"""
@@ -42,8 +41,10 @@ def evenly_spaced_sampling(array, n):
             result.extend(array)
         return result[:n]
 
+    
 def get_gif_mov_url(id, ext='mp4'):
     return f'https://media.giphy.com/media/{id}/giphy.{ext}'
+
 
 def get_gif(id):
     gif = None
@@ -63,9 +64,9 @@ def get_gif(id):
                 sleep(1)
                 logging.info(f'Error: {type(ex)}:{ex}. {i} times. With extension gif.')
     return gif
-    
+
+
 def save_gif(id):
-    print(OUTPUT_PATH, id)
     directory = os.path.join(OUTPUT_PATH, id)
     if os.path.isdir(directory):
         return None
@@ -77,8 +78,8 @@ def save_gif(id):
             Image.fromarray(x).save(os.path.join(directory, f'{i}.jpg'))
         del gif
 
+        
 print('Total gifs:', len(gifs))
 with Pool(processes=16) as executor:
     executor.map(save_gif, gifs)
 #     executor.map(save_gif, gifs2cat.index)
-    #executor.map(save_gif, gifs2cat.gif_id)

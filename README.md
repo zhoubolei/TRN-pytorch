@@ -1,5 +1,28 @@
 # Temporal Relation Networks
 
+
+## How to launch custom TRN
+
+Prepare dataset (see dataset-related notebooks and `datasets_video.py` file).
+
+Giphy reactions cmd:
+
+```
+python3 main_modified.py custom RGB --arch InceptionV3 --num_segments 8 --consensus_type TRNmultiscale --batch-size 4
+```
+
+Siamese net cmd:
+
+```
+python3 main_siamese.py custom RGB --arch InceptionV3 --num_segments 8 --consensus_type TRNmultiscale --batch-size 4
+```
+
+Launch tensorboard:
+
+```
+tensorboard --logdir logs/
+```
+
 We release the code of the [Temporal Relation Networks](http://relation.csail.mit.edu/), built on top of the [TSN-pytorch codebase](https://github.com/yjxiong/temporal-segment-networks).
 
 **NEW (July 29, 2018)**: This work is accepted to ECCV'18, check the [paper](https://arxiv.org/pdf/1711.08496.pdf) for the latest result. We also release the state of the art model trained on the Something-Something V2, see following instruction.
