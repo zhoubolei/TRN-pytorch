@@ -5,6 +5,7 @@ import os
 import os.path
 import numpy as np
 from numpy.random import randint
+from collections import defaultdict
 
 class VideoRecord(object):
     def __init__(self, row):
@@ -43,6 +44,10 @@ class TSNDataSet(data.Dataset):
             self.new_length += 1# Diff needs one more image to calculate diff
 
         self._parse_list()
+        
+        self.label2videos = defaultdict(list)
+        for i, x in enumerate(self.video_list):
+            self.label2videos[x.label].append(i)
 
     def _load_image(self, directory, idx):
         if self.modality == 'RGB' or self.modality == 'RGBDiff':

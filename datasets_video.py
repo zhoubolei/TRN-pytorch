@@ -4,13 +4,15 @@ import torchvision
 import torchvision.datasets as datasets
 
 
-ROOT_DATASET = '/home/ec2-user/mnt/giphy_dataset'
+# ROOT_DATASET = '/home/ec2-user/mnt/giphy_dataset'
+ROOT_DATASET = '/home/ec2-user/gifs'
 
 
 def return_custom(modality):
     filename_categories = 'category.txt'
     if modality == 'RGB':
-        root_data = '/home/ec2-user/mnt/giphy_dataset'
+#         root_data = '/home/ec2-user/mnt/giphy_dataset'
+        root_data = '/home/ec2-user/gifs'
         filename_imglist_train = 'train_videofolder.txt'
         filename_imglist_val = 'val_videofolder.txt'
         prefix = '{}.jpg'

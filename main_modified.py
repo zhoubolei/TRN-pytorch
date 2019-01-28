@@ -21,20 +21,6 @@ from tensorboardX import SummaryWriter
 best_prec1 = 0
 
 summary_writer = SummaryWriter(log_dir='logs')
-
-
-class ModifiedTRN(nn.Module):
-    def __init__(self, trn, num_classes):
-        super(ModifiedTRN, self).__init__()
-        self.trn = trn
-        self.new_fc = nn.Sequential(
-            nn.ReLU(),
-            nn.Linear(339, num_classes)
-        )
-    
-    def forward(self, input):
-        fc = self.trn(input)
-        return self.new_fc(fc)  
         
 
 def main():
@@ -49,28 +35,31 @@ def main():
     args.store_name = '_'.join(['TRN', args.dataset, args.modality, args.arch, args.consensus_type, 'segment%d'% args.num_segments])
     print('storing name: ' + args.store_name)
 
-    base_model = TSN(339, args.num_segments, args.modality,
+    model = TSN(339, args.num_segments, args.modality,
                 base_model=args.arch,
                 consensus_type=args.consensus_type,
                 dropout=args.dropout,
                 img_feature_dim=args.img_feature_dim,
                 partial_bn=not args.no_partialbn)
-    _, cnn =list(base_model.named_children())[0]
+    _, cnn =list(model.named_children())[0]
     for p in cnn.parameters():
         p.requires_grad = False
 
-    crop_size = base_model.crop_size
-    scale_size = base_model.scale_size
-    input_mean = base_model.input_mean
-    input_std = base_model.input_std
-    policies = base_model.get_optim_policies()
-    train_augmentation = base_model.get_augmentation()
+    crop_size = model.crop_size
+    scale_size = model.scale_size
+    input_mean = model.input_mean
+    input_std = model.input_std
+    policies = model.get_optim_policies()
+    train_augmentation = model.get_augmentation()
 
-    base_model = torch.nn.DataParallel(base_model, device_ids=args.gpus).cuda()
+    model = torch.nn.DataParallel(model, device_ids=args.gpus).cuda()
     
     # remove if not transfer learning    
     checkpoint = torch.load('/home/ec2-user/mit_weights.pth.tar')
-    base_model.load_state_dict(checkpoint['state_dict'])
+    model.load_state_dict(checkpoint['state_dict'])
+    
+    for module in list(list(model._modules['module'].children())[-1].children())[-1].children():
+        module[-1] = nn.Linear(256, num_class)
 
     if args.resume:
         if os.path.isfile(args.resume):
@@ -78,17 +67,14 @@ def main():
             checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
             best_prec1 = checkpoint['best_prec1']
-            base_model.load_state_dict(checkpoint['state_dict'])
+            model.load_state_dict(checkpoint['state_dict'])
             print(("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.evaluate, checkpoint['epoch'])))
         else:
             print(("=> no checkpoint found at '{}'".format(args.resume)))
-    
-    model = ModifiedTRN(base_model, num_class)
-    model.cuda()
-    model.train(True)
 
     cudnn.benchmark = True
+    model.cuda()
 
     # Data loading code
     if args.modality != 'RGBDiff':
@@ -182,9 +168,9 @@ def train(train_loader, model, criterion, optimizer, epoch, log):
     top5 = AverageMeter()
 
     if args.no_partialbn:
-        model.trn.module.partialBN(False)
+        model.module.partialBN(False)
     else:
-        model.trn.module.partialBN(True)
+        model.module.partialBN(True)
 
     # switch to train mode
     model.train()

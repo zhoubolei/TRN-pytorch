@@ -10,31 +10,92 @@ import torch.optim
 from torch.nn.utils import clip_grad_norm
 from torch import nn
 
-from dataset import TSNDataSet
+from dataset_siamese import SiameseDataset
 from models import TSN
 from transforms import *
 from opts import parser
 import datasets_video
-
+import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 
-best_prec1 = 0
+best_prec1 = 10000
 
-summary_writer = SummaryWriter(log_dir='logs')
+summary_writer = SummaryWriter(log_dir='logs') 
 
 
-class ModifiedTRN(nn.Module):
-    def __init__(self, trn, num_classes):
-        super(ModifiedTRN, self).__init__()
-        self.trn = trn
-        self.new_fc = nn.Sequential(
-            nn.ReLU(),
-            nn.Linear(339, num_classes)
-        )
-    
-    def forward(self, input):
-        fc = self.trn(input)
-        return self.new_fc(fc)  
+# class ContrastiveLoss(nn.Module):
+#     """
+#     Cosine contrastive loss function.
+#     Based on: http://anthology.aclweb.org/W16-1617
+#     Maintain 0 for match, 1 for not match.
+#     If they match, loss is 1/4(1-cos_sim)^2.
+#     If they don't, it's cos_sim^2 if cos_sim < margin or 0 otherwise.
+#     Margin in the paper is ~0.4.
+#     """
+
+#     def __init__(self, margin=0.5):
+#         super(ContrastiveLoss, self).__init__()
+#         self.margin = margin
+
+#     def forward(self, output1, output2, label):
+#         label = label.squeeze(1)
+#         cos_sim = F.cosine_similarity(output1, output2)
+#         return torch.mean(label * torch.div(torch.pow((1.0 - cos_sim), 2), 4) +
+#                                   (1 - label) * torch.pow(cos_sim * torch.lt(cos_sim, self.margin).float(), 2))
+
+
+# class ContrastiveLoss(torch.nn.Module):
+#     """
+#     Contrastive loss function.
+#     Based on: http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
+#     """
+
+#     def __init__(self, margin=0.5):
+#         super(ContrastiveLoss, self).__init__()
+#         self.margin = margin
+
+#     def forward(self, output1, output2, label):
+#         cosine_distance = 1 - F.cosine_similarity(output1, output2)
+#         loss_contrastive = torch.mean(label * torch.pow(cosine_distance, 2) +
+#                                       (1 - label) * torch.pow(torch.clamp(self.margin - cosine_distance, min=0.0), 2))
+#         return loss_contrastive
+
+
+class ContrastiveLoss(torch.nn.Module):
+    """
+    Contrastive loss function.
+    Based on: http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
+    """
+
+    def __init__(self, margin=2.0):
+        super(ContrastiveLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, output1, output2, label):
+        label = label.squeeze(1)
+        euclidean_distance = F.pairwise_distance(output1, output2)
+        loss_contrastive = torch.mean(label * torch.pow(euclidean_distance, 2) +
+                                      (1 - label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
+        return loss_contrastive
+
+
+# class ContrastiveLoss(torch.nn.Module):
+#     """
+#     Contrastive loss
+#     Takes embeddings of two samples and a target label == 1 if samples are from the same class and label == 0 otherwise
+#     """
+
+#     def __init__(self, margin=20):
+#         super(ContrastiveLoss, self).__init__()
+#         self.margin = margin
+#         self.eps = 1e-9
+
+#     def forward(self, output1, output2, target, size_average=True):
+#         target = target.squeeze(1)
+#         distances = (output2 - output1).pow(2).sum(1)  # squared distances
+#         losses = 0.5 * (target * distances +
+#                         (1 - target) * F.relu(self.margin - (distances + self.eps).sqrt()).pow(2))
+#         return losses.mean() if size_average else losses.sum()
         
 
 def main():
@@ -49,28 +110,30 @@ def main():
     args.store_name = '_'.join(['TRN', args.dataset, args.modality, args.arch, args.consensus_type, 'segment%d'% args.num_segments])
     print('storing name: ' + args.store_name)
 
-    base_model = TSN(339, args.num_segments, args.modality,
+    model = TSN(339, args.num_segments, args.modality,
                 base_model=args.arch,
                 consensus_type=args.consensus_type,
                 dropout=args.dropout,
                 img_feature_dim=args.img_feature_dim,
                 partial_bn=not args.no_partialbn)
-    _, cnn =list(base_model.named_children())[0]
-    for p in cnn.parameters():
-        p.requires_grad = False
+#     _, cnn =list(model.named_children())[0]
+#     for p in cnn.parameters():
+#         p.requires_grad = False
 
-    crop_size = base_model.crop_size
-    scale_size = base_model.scale_size
-    input_mean = base_model.input_mean
-    input_std = base_model.input_std
-    policies = base_model.get_optim_policies()
-    train_augmentation = base_model.get_augmentation()
+    crop_size = model.crop_size
+    scale_size = model.scale_size
+    input_mean = model.input_mean
+    input_std = model.input_std
+    policies = model.get_optim_policies()
+    train_augmentation = model.get_augmentation()
 
-    base_model = torch.nn.DataParallel(base_model, device_ids=args.gpus).cuda()
+    model = torch.nn.DataParallel(model, device_ids=args.gpus).cuda()
     
     # remove if not transfer learning    
     checkpoint = torch.load('/home/ec2-user/mit_weights.pth.tar')
-    base_model.load_state_dict(checkpoint['state_dict'])
+    model.load_state_dict(checkpoint['state_dict'])
+    for module in list(list(model._modules['module'].children())[-1].children())[-1].children():
+        module[-1] = nn.Linear(256, 64)
 
     if args.resume:
         if os.path.isfile(args.resume):
@@ -78,16 +141,14 @@ def main():
             checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
             best_prec1 = checkpoint['best_prec1']
-            base_model.load_state_dict(checkpoint['state_dict'])
+            model.load_state_dict(checkpoint['state_dict'])
             print(("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.evaluate, checkpoint['epoch'])))
         else:
             print(("=> no checkpoint found at '{}'".format(args.resume)))
-    
-    model = ModifiedTRN(base_model, num_class)
+            
     model.cuda()
     model.train(True)
-
     cudnn.benchmark = True
 
     # Data loading code
@@ -102,7 +163,7 @@ def main():
         data_length = 5
 
     train_loader = torch.utils.data.DataLoader(
-        TSNDataSet(args.root_path, args.train_list, num_segments=args.num_segments,
+        SiameseDataset(args.root_path, args.train_list, num_segments=args.num_segments,
                    new_length=data_length,
                    modality=args.modality,
                    image_tmpl=prefix,
@@ -116,7 +177,7 @@ def main():
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        TSNDataSet(args.root_path, args.val_list, num_segments=args.num_segments,
+        SiameseDataset(args.root_path, args.val_list, num_segments=args.num_segments,
                    new_length=data_length,
                    modality=args.modality,
                    image_tmpl=prefix,
@@ -133,7 +194,7 @@ def main():
 
     # define loss function (criterion) and optimizer
     if args.loss_type == 'nll':
-        criterion = torch.nn.CrossEntropyLoss().cuda()
+        criterion = ContrastiveLoss().cuda()
     else:
         raise ValueError("Unknown loss type")
 
@@ -142,10 +203,7 @@ def main():
             group['name'], len(group['params']), group['lr_mult'], group['decay_mult'])))
         
     optimizer = torch.optim.Adam(model.parameters(), args.lr)
-#     optimizer = torch.optim.SGD(policies,
-#                                 args.lr,
-#                                 momentum=args.momentum,
-#                                 weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
 
     if args.evaluate:
         validate(val_loader, model, criterion, 0)
@@ -153,8 +211,7 @@ def main():
 
     log_training = open(os.path.join(args.root_log, '%s.csv' % args.store_name), 'w')
     for epoch in range(args.start_epoch, args.epochs):
-        # adjust_learning_rate(optimizer, epoch, args.lr_steps)
-
+        scheduler.step()
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, log_training)
 
@@ -163,8 +220,8 @@ def main():
             prec1 = validate(val_loader, model, criterion, (epoch + 1) * len(train_loader), log_training, epoch)
 
             # remember best prec@1 and save checkpoint
-            is_best = prec1 > best_prec1
-            best_prec1 = max(prec1, best_prec1)
+            is_best = prec1 < best_prec1
+            best_prec1 = min(prec1, best_prec1)
             save_checkpoint({
                 'epoch': epoch + 1,
                 'arch': args.arch,
@@ -178,36 +235,31 @@ def train(train_loader, model, criterion, optimizer, epoch, log):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
 
     if args.no_partialbn:
-        model.trn.module.partialBN(False)
+        model.module.partialBN(False)
     else:
-        model.trn.module.partialBN(True)
+        model.module.partialBN(True)
 
     # switch to train mode
     model.train()
 
     end = time.time()
-    for i, (input, target) in enumerate(train_loader):
+    for i, (video1, video2, label) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
-
-        target = target.cuda()
-        input_var = torch.autograd.Variable(input)
-        target_var = torch.autograd.Variable(target)
-
+        label = label.cuda()
+        
+        video1_var = torch.autograd.Variable(video1)
+        video2_var = torch.autograd.Variable(video2)
+        label_var = torch.autograd.Variable(label)
+        
         # compute output
-        output = model(input_var)
-        loss = criterion(output, target_var)
-
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1,5))
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
-
+        output1 = model(video1_var)
+        output2 = model(video2_var)
+        loss = criterion(output1, output2, label)
+        
+        losses.update(loss.data[0], output1.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -227,17 +279,13 @@ def train(train_loader, model, criterion, optimizer, epoch, log):
 
         if i % args.print_freq == 0:
             summary_writer.add_scalar('train_loss', losses.val, epoch * len(train_loader) + i)
-            summary_writer.add_scalar('train_top_1', top1.val, epoch * len(train_loader) + i)
-            summary_writer.add_scalar('train_top_5', top5.val, epoch * len(train_loader) + i)
             
             output = ('Epoch: [{0}][{1}/{2}], lr: {lr:.5f}\t'
                     'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                     'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                    'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                    'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                    'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                    'Loss {loss.val:.7f} ({loss.avg:.7f})\t'.format(
                         epoch, i, len(train_loader), batch_time=batch_time,
-                        data_time=data_time, loss=losses, top1=top1, top5=top5, lr=optimizer.param_groups[-1]['lr']))
+                        data_time=data_time, loss=losses, lr=optimizer.param_groups[-1]['lr']))
             print(output)
             log.write(output + '\n')
             log.flush()
@@ -247,28 +295,25 @@ def train(train_loader, model, criterion, optimizer, epoch, log):
 def validate(val_loader, model, criterion, iter, log, epoch=0):
     batch_time = AverageMeter()
     losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
 
     # switch to evaluate mode
     model.eval()
 
     end = time.time()
-    for i, (input, target) in enumerate(val_loader):
-        target = target.cuda()
-        input_var = torch.autograd.Variable(input, volatile=True)
-        target_var = torch.autograd.Variable(target, volatile=True)
+    for i, (video1, video2, label) in enumerate(val_loader):
+        label = label.cuda()
+        
+        with torch.no_grad():
+            video1_var = torch.autograd.Variable(video1)
+            video2_var = torch.autograd.Variable(video2)
+            label_var = torch.autograd.Variable(label)
 
         # compute output
-        output = model(input_var)
-        loss = criterion(output, target_var)
+        output1 = model(video1_var)
+        output2 = model(video2_var)
+        loss = criterion(output1, output2, label)
 
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1,5))
-
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+        losses.update(loss.data[0], output1.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -277,28 +322,23 @@ def validate(val_loader, model, criterion, iter, log, epoch=0):
         if i % args.print_freq == 0:
             output = ('Test: [{0}/{1}]\t'
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   i, len(val_loader), batch_time=batch_time, loss=losses,
-                   top1=top1, top5=top5))
+                  'Loss {loss.val:.7f} ({loss.avg:.7f})\t'.format(
+                   i, len(val_loader), batch_time=batch_time, loss=losses))
             print(output)
             log.write(output + '\n')
             log.flush()
             
     summary_writer.add_scalar('val_loss', losses.avg, epoch)
-    summary_writer.add_scalar('val_top_1', top1.avg, epoch)
-    summary_writer.add_scalar('val_top_5', top5.avg, epoch)
 
-    output = ('Testing Results: Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f} Loss {loss.avg:.5f}'
-          .format(top1=top1, top5=top5, loss=losses))
+    output = ('Testing Results: Loss {loss.avg:.7f}'
+          .format(loss=losses))
     print(output)
-    output_best = '\nBest Prec@1: %.3f'%(best_prec1)
+    output_best = '\nBest Loss: %.3f'%(losses.avg)
     print(output_best)
     log.write(output + ' ' + output_best + '\n')
     log.flush()
 
-    return top1.avg
+    return losses.avg
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
