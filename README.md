@@ -73,7 +73,7 @@ The sample video is the following
 
 ```bash
 python test_video.py --arch BNInception --dataset somethingv2 \
-    --weight pretrain/TRN_somethingv2_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar \
+    --weights pretrain/TRN_somethingv2_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar \
     --frame_folder sample_data/bolei_juggling
 
 RESULT ON sample_data/bolei_juggling
@@ -90,7 +90,7 @@ RESULT ON sample_data/bolei_juggling
 
 ```bash
 python test_video.py --arch InceptionV3 --dataset moments \
-    --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar \
+    --weights pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar \
     --frame_folder sample_data/bolei_juggling
 
 RESULT ON sample_data/bolei_juggling
@@ -106,7 +106,7 @@ RESULT ON sample_data/bolei_juggling
 
 ```bash
 python test_video.py --arch InceptionV3 --dataset moments \
-    --weight pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar \
+    --weights pretrain/TRN_moments_RGB_InceptionV3_TRNmultiscale_segment8_best.pth.tar \
     --video_file sample_data/bolei_juggling.mp4 --rendered_output sample_data/predicted_video.mp4
 ```
 

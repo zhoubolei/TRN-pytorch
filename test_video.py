@@ -12,11 +12,11 @@ import numpy as np
 from PIL import Image
 import moviepy.editor as mpy
 
+import torchvision
 import torch.nn.parallel
 import torch.optim
 from models import TSN
-from transforms import *
-import datasets_video
+import transforms
 from torch.nn import functional as F
 
 
@@ -78,14 +78,14 @@ group.add_argument('--frame_folder', type=str, default=None)
 parser.add_argument('--modality', type=str, default='RGB',
                     choices=['RGB', 'Flow', 'RGBDiff'], )
 parser.add_argument('--dataset', type=str, default='moments',
-                    choices=['something', 'jester', 'moments'])
+                    choices=['something', 'jester', 'moments', 'somethingv2'])
 parser.add_argument('--rendered_output', type=str, default=None)
 parser.add_argument('--arch', type=str, default="InceptionV3")
 parser.add_argument('--input_size', type=int, default=224)
 parser.add_argument('--test_segments', type=int, default=8)
 parser.add_argument('--img_feature_dim', type=int, default=256)
 parser.add_argument('--consensus_type', type=str, default='TRNmultiscale')
-parser.add_argument('--weight', type=str)
+parser.add_argument('--weights', type=str)
 
 args = parser.parse_args()
 
@@ -104,28 +104,24 @@ net = TSN(num_class,
           consensus_type=args.consensus_type,
           img_feature_dim=args.img_feature_dim, print_spec=False)
 
-weights = args.weight
-checkpoint = torch.load(weights)
-#print("model epoch {} best prec@1: {}".format(checkpoint['epoch'], checkpoint['best_prec1']))
-
+checkpoint = torch.load(args.weights)
 base_dict = {'.'.join(k.split('.')[1:]): v for k, v in list(checkpoint['state_dict'].items())}
 net.load_state_dict(base_dict)
 net.cuda().eval()
 
 # Initialize frame transforms.
-
 transform = torchvision.transforms.Compose([
-    GroupOverSample(net.input_size, net.scale_size),
-    Stack(roll=(args.arch in ['BNInception', 'InceptionV3'])),
-    ToTorchFormatTensor(div=(args.arch not in ['BNInception', 'InceptionV3'])),
-    GroupNormalize(net.input_mean, net.input_std),
+    transforms.GroupOverSample(net.input_size, net.scale_size),
+    transforms.Stack(roll=(args.arch in ['BNInception', 'InceptionV3'])),
+    transforms.ToTorchFormatTensor(div=(args.arch not in ['BNInception', 'InceptionV3'])),
+    transforms.GroupNormalize(net.input_mean, net.input_std),
 ])
 
 # Obtain video frames
 if args.frame_folder is not None:
-    print('Loading frames in %s'%args.frame_folder)
+    print('Loading frames in {}'.format(args.frame_folder))
     import glob
-    # here make sure after sorting the frame paths have the correct temporal order
+    # Here, make sure after sorting the frame paths have the correct temporal order
     frame_paths = sorted(glob.glob(os.path.join(args.frame_folder, '*.jpg')))
     frames = load_frames(frame_paths)
 else:
@@ -135,11 +131,12 @@ else:
 
 # Make video prediction.
 data = transform(frames)
-input_var = torch.autograd.Variable(data.view(-1, 3, data.size(1), data.size(2)),
-                                    volatile=True).unsqueeze(0).cuda()
-logits = net(input_var)
-h_x = torch.mean(F.softmax(logits, 1), dim=0).data
-probs, idx = h_x.sort(0, True)
+input = data.view(-1, 3, data.size(1), data.size(2)).unsqueeze(0).cuda()
+
+with torch.no_grad():
+    logits = net(input)
+    h_x = torch.mean(F.softmax(logits, 1), dim=0).data
+    probs, idx = h_x.sort(0, True)
 
 # Output the prediction.
 video_name = args.frame_folder if args.frame_folder is not None else args.video_file

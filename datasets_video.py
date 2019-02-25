@@ -22,7 +22,7 @@ def return_something(modality):
         filename_imglist_val = 'something/val_videofolder.txt'
         prefix = '{:05d}.jpg'
     else:
-        print('no such modality:'+modality)
+        print('no such modality:' + modality)
         os.exit()
     return filename_categories, filename_imglist_train, filename_imglist_val, root_data, prefix
 
