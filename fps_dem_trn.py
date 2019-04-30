@@ -111,7 +111,7 @@ net = TSN(num_class,
           consensus_type=args.consensus_type,
           img_feature_dim=args.img_feature_dim, print_spec=False)
 
-checkpoint = torch.load(args.weights,map_location='cuda:0')
+checkpoint = torch.load(args.weights)
 base_dict = {'.'.join(k.split('.')[1:]): v for k, v in list(checkpoint['state_dict'].items())}
 net.load_state_dict(base_dict)
 net.cuda().eval()
