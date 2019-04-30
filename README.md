@@ -112,6 +112,8 @@ python test_video.py --arch InceptionV3 --dataset moments \
 
 The command above uses `ffmpeg` to extract frames from the supplied video `--video_file` and optionally generates a new video `--rendered_output` from the frames used to make the prediction with the predicted category in the top-left corner.
 
+* Gesture recognition web-cam [demo](https://youtu.be/6PAvFzV4Yfo/) script
+python fps_dem_trn.py
 
 ### TODO
 
