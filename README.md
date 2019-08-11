@@ -10,7 +10,7 @@ Otherwise you will not be able to use the inception series CNN architecture.
 ![framework](http://relation.csail.mit.edu/framework_trn.png)
 
 ### Data preparation
-Download the [something-something dataset](https://www.twentybn.com/datasets/something-something/v1) or [jester dataset](https://www.twentybn.com/datasets/something-something) or [charades dataset](http://allenai.org/plato/charades/). Decompress them into some folder. Use [process_dataset.py](process_dataset.py) to generate the index files for train, val, and test split. Finally properly set up the train, validation, and category meta files in [datasets_video.py](datasets_video.py).
+Download the [something-something dataset](https://www.twentybn.com/datasets/something-something/v1) or [jester dataset](https://20bn.com/datasets/jester) or [charades dataset](http://allenai.org/plato/charades/). Decompress them into some folder. Use [process_dataset.py](process_dataset.py) to generate the index files for train, val, and test split. Finally properly set up the train, validation, and category meta files in [datasets_video.py](datasets_video.py).
 
 For [Something-Something-V2](https://www.twentybn.com/datasets/something-something), we provide a utilty script [extract_frames.py](https://github.com/metalbubble/TRN-pytorch/blob/master/extract_frames.py) for converting the downloaded `.webm` videos into directories containing extracted frames. Additionally, the corresponding optic flow images can be downloaded from [here](http://relation.csail.mit.edu/data/20bn-something-something-v2-flow.tar.gz).
 
