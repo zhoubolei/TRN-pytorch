@@ -54,8 +54,7 @@ python test_models.py something RGB model/TRN_something_RGB_BNInception_TRNmulti
 * Download pretrained models on [Something-Something](https://20bn.com/datasets/something-something/v1), [Something-Something-V2](https://www.twentybn.com/datasets/something-something), [Jester](https://www.twentybn.com/datasets/jester), and [Moments in Time](http://moments.csail.mit.edu/)
 
 ```bash
-cd pretrain
-./download_models.sh
+./download.sh
 ```
 
 * Download sample video and extracted frames. There will be mp4 video file and a folder containing the RGB frames for that video.
