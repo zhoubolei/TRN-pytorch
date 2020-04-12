@@ -1,5 +1,5 @@
 # Temporal Relation Networks
-**NEW(April 20, 2020)**: Check out our recent CVPR'20 work [Temporal Pyramid Networks (TPN) for action recognition](https://github.com/decisionforce/TPN), which outperforms TRN and SlowFast Network with a large margin. Bonus: bolei_juggling_v2.mp4 is attached in that repo!  
+**NEW(April 20, 2020)**: Check out our recent CVPR'20 work [Temporal Pyramid Networks (TPN) for action recognition](https://github.com/decisionforce/TPN), which outperforms TRN with a large margin and achieves close to SOTA results on many video benchmarks with RGB stream only. Bonus: bolei_juggling_v2.mp4 is attached in that repo!  
 
 We release the code of the [Temporal Relation Networks](http://relation.csail.mit.edu/), built on top of the [TSN-pytorch codebase](https://github.com/yjxiong/temporal-segment-networks).
 
